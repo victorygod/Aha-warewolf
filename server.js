@@ -6,17 +6,20 @@
 const fs = require('fs');
 const path = require('path');
 
-process.env.ANTHROPIC_BASE_URL = 'https://antchat.alipay.com/v1';
-// 从 api_key.txt 读取 API Key
-const apiKeyPath = path.join(__dirname, 'api_key.txt');
+// 从 api_key.conf 加载配置
+const configPath = path.join(__dirname, 'api_key.conf');
+let config;
 try {
-  const apiKey = fs.readFileSync(apiKeyPath, 'utf8').trim();
-  process.env.ANTHROPIC_AUTH_TOKEN = apiKey;
+  const configContent = fs.readFileSync(configPath, 'utf8');
+  config = JSON.parse(configContent);
+  process.env.ANTHROPIC_BASE_URL = config.base_url;
+  process.env.ANTHROPIC_AUTH_TOKEN = config.auth_token;
+  process.env.ANTHROPIC_MODEL = config.model;
 } catch (e) {
-  console.error('无法读取 api_key.txt 文件，请确保文件存在');
+  console.error('无法读取或解析 api_key.conf 文件，请确保文件存在且格式正确');
+  console.error(e.message);
   process.exit(1);
 }
-process.env.ANTHROPIC_MODEL = 'GLM-5';
 
 // 调试模式（开发时默认开启，生产环境设置 DEBUG_MODE=false 关闭）
 process.env.DEBUG_MODE = 'true';
