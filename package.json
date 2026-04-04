@@ -1,0 +1,12 @@
+{
+  "name": "werewolf-game",
+  "version": "1.0.0",
+  "description": "狼人杀游戏 - 支持AI玩家",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

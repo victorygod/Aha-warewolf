@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>狼人杀</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 头部状态栏 -->
+    <header id="header">
+      <div id="phase-info">等待玩家加入</div>
+      <div id="day-count"></div>
+      <div id="my-role" class="hidden"></div>
+    </header>
+
+    <!-- 玩家列表 -->
+    <section id="players-section">
+      <div id="players-grid"></div>
+    </section>
+
+    <!-- 消息区域 -->
+    <section id="messages-section">
+      <div id="messages"></div>
+    </section>
+
+    <!-- 操作区域 -->
+    <section id="action-section">
+      <div id="action-prompt"></div>
+      <div id="action-input">
+        <input type="text" id="speech-input" placeholder="输入发言内容...">
+        <button id="send-btn">发送</button>
+      </div>
+      <div id="vote-buttons"></div>
+      <div id="skill-buttons"></div>
+    </section>
+
+    <!-- 设置面板 -->
+    <div id="setup-panel" class="panel">
+      <h2>狼人杀</h2>
+      <div class="form-group">
+        <label>你的名字：</label>
+        <input type="text" id="player-name" placeholder="输入名字">
+      </div>
+      <div class="form-group">
+        <label>游戏人数：</label>
+        <select id="player-count">
+          <option value="9">9人局</option>
+          <option value="12">12人局</option>
+          <option value="16">16人局</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>AI 玩家数量：</label>
+        <input type="number" id="ai-count" value="8" min="0">
+      </div>
+      <div class="buttons">
+        <button id="ready-btn">准备</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
