@@ -3,8 +3,19 @@
  */
 
 // 环境变量配置（必须在 require 其他模块之前设置）
+const fs = require('fs');
+const path = require('path');
+
 process.env.ANTHROPIC_BASE_URL = 'https://antchat.alipay.com/v1';
-process.env.ANTHROPIC_AUTH_TOKEN = '9MXzkJ5eSCvz4KvgzKSGbftO85noScnF';
+// 从 api_key.txt 读取 API Key
+const apiKeyPath = path.join(__dirname, 'api_key.txt');
+try {
+  const apiKey = fs.readFileSync(apiKeyPath, 'utf8').trim();
+  process.env.ANTHROPIC_AUTH_TOKEN = apiKey;
+} catch (e) {
+  console.error('无法读取 api_key.txt 文件，请确保文件存在');
+  process.exit(1);
+}
 process.env.ANTHROPIC_MODEL = 'GLM-5';
 
 // 调试模式（开发时默认开启，生产环境设置 DEBUG_MODE=false 关闭）

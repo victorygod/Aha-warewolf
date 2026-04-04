@@ -230,7 +230,7 @@ ${soul}
 
   async callAPI() {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
-    const apiKey = process.env.ANTHROPIC_AUTH_TOKEN || '9MXzkJ5eSCvz4KvgzKSGbftO85noScnF';
+    const apiKey = process.env.ANTHROPIC_AUTH_TOKEN;
     const model = process.env.ANTHROPIC_MODEL;
 
     // 使用已构建的 messages
