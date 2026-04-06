@@ -120,7 +120,7 @@ const ROLES = {
       }
     }],
     events: {
-      'player:death': (data, player, game) => {
+      'player:death': (data, game, player) => {
         // 被毒死不能开枪
         if (data.player.id === player.id && data.reason === 'poison') {
           player.state.canShoot = false;

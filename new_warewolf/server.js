@@ -11,9 +11,9 @@ const path = require('path');
 const configPath = path.join(__dirname, 'api_key.conf');
 try {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  process.env.ANTHROPIC_BASE_URL = config.base_url;
-  process.env.ANTHROPIC_AUTH_TOKEN = config.auth_token;
-  process.env.ANTHROPIC_MODEL = config.model;
+  process.env.BASE_URL = config.base_url;
+  process.env.AUTH_TOKEN = config.auth_token;
+  process.env.MODEL = config.model;
 } catch (e) {
   console.log('未找到 api_key.conf，AI 将使用随机决策');
 }
@@ -112,6 +112,12 @@ app.post('/api/ready', (req, res) => {
       notifyPlayer(playerId, data);
     });
 
+    // 监听广播事件
+    game.on('broadcast', (data) => {
+      console.log('[Game] 广播:', data.type);
+      broadcast('state_update');
+    });
+
     // 监听投票完成，广播状态
     game.on('vote:complete', () => {
       broadcast('state_update');
@@ -198,6 +204,7 @@ app.post('/api/add-ai', (req, res) => {
 app.post('/api/speak', (req, res) => {
   const { playerId, content } = req.body;
   game.speak(playerId, content);
+  game.completeAction(playerId, { type: 'speak', content });
   broadcast('state_update');
   res.json({ success: true, state: game.getState(playerId) });
 });
@@ -206,6 +213,7 @@ app.post('/api/speak', (req, res) => {
 app.post('/api/vote', (req, res) => {
   const { voterId, targetId } = req.body;
   game.vote(voterId, targetId);
+  game.completeAction(voterId, { type: 'vote', targetId });
   broadcast('state_update');
   res.json({ success: true, state: game.getState() });
 });
@@ -215,8 +223,38 @@ app.post('/api/skill', (req, res) => {
   const { playerId, targetId, action } = req.body;
   const phase = game.phaseManager?.getCurrentPhase()?.id;
   game.useSkill(playerId, phase, targetId, action);
+  game.completeAction(playerId, { type: 'skill', targetId, action });
   broadcast('state_update');
   res.json({ success: true, state: game.getState(playerId) });
+});
+
+// 使用全局能力
+app.post('/api/ability', (req, res) => {
+  const { playerId, abilityId, targetId } = req.body;
+  const player = game.players.find(p => p.id === playerId);
+  if (!player) return res.status(400).json({ error: '玩家不存在' });
+
+  const role = player.role;
+  const ability = role?.globalAbilities?.find(a => a.id === abilityId);
+
+  if (!ability) {
+    return res.status(400).json({ error: '该能力不存在' });
+  }
+
+  const phase = game.phaseManager?.getCurrentPhase()?.id;
+  if (!ability.availablePhases.includes(phase)) {
+    return res.status(400).json({ error: '当前阶段无法使用该能力' });
+  }
+
+  if (!ability.canUse(player)) {
+    return res.status(400).json({ error: '无法使用该能力' });
+  }
+
+  const target = targetId ? game.players.find(p => p.id === targetId) : null;
+  const result = ability.execute(target, player, game);
+
+  broadcast('state_update');
+  res.json({ success: true, state: game.getState(playerId), result });
 });
 
 // 重置
@@ -226,6 +264,27 @@ app.post('/api/reset', (req, res) => {
   resetUsedNames();
   broadcast('state_update');
   res.json({ success: true });
+});
+
+// 警长指定发言顺序
+app.post('/api/sheriff-order', (req, res) => {
+  const { playerId, order } = req.body;
+
+  // 验证是否是警长
+  if (game.sheriff !== playerId) {
+    return res.status(400).json({ error: '只有警长可以指定发言顺序' });
+  }
+
+  // 验证顺序是否有效
+  if (!Array.isArray(order) || order.length === 0) {
+    return res.status(400).json({ error: '发言顺序无效' });
+  }
+
+  game.setSheriffOrder(order);
+  game.completeAction(playerId, { type: 'sheriff_order', order });
+
+  broadcast('state_update');
+  res.json({ success: true, state: game.getState(playerId) });
 });
 
 app.listen(PORT, () => {

@@ -35,8 +35,10 @@ class GameEngine extends EventEmitter {
     this.couples = null;
     this.sheriff = null;
     this.sheriffOrder = null;
+    this.sheriffAssignOrder = null;  // 警长指定的发言顺序
     this.deathQueue = [];
     this.lastWordsPlayer = null;
+    this.lastDeathPlayer = null;  // 上一轮死亡的第一位玩家
 
     // 阶段管理器
     this.phaseManager = null;
@@ -44,6 +46,11 @@ class GameEngine extends EventEmitter {
   }
 
   // ========== 阶段执行推送方法 ==========
+
+  // 广播消息给所有人
+  broadcast(data) {
+    this.emit('broadcast', data);
+  }
 
   // 推送消息给玩家（让玩家行动）
   notifyPlayer(playerId, data) {
@@ -144,7 +151,15 @@ class GameEngine extends EventEmitter {
     const voter = this.players.find(p => p.id === voterId);
     if (!voter) throw new Error('投票者不存在');
 
-    this.votes[voterId] = targetId;
+    // 确保键为字符串类型，保持一致性
+    const key = String(voterId);
+
+    // 检查是否已投票
+    if (this.votes[key] !== undefined) {
+      throw new Error('你已投票');
+    }
+
+    this.votes[key] = targetId;
   }
 
   // 使用技能
@@ -253,7 +268,7 @@ class GameEngine extends EventEmitter {
 
     for (const [voterId, targetId] of Object.entries(this.votes)) {
       const voter = this.players.find(p => p.id === parseInt(voterId));
-      const target = targetId ? this.players.find(p => p.id === targetId) : null;
+      const target = targetId ? this.players.find(p => p.id === Number(targetId)) : null;
 
       voteDetails.push({
         voter: voter?.name,
@@ -261,7 +276,8 @@ class GameEngine extends EventEmitter {
       });
 
       if (targetId) {
-        voteCounts[targetId] = (voteCounts[targetId] || 0) + 1;
+        const countKey = Number(targetId);
+        voteCounts[countKey] = (voteCounts[countKey] || 0) + 1;
       }
     }
 
@@ -302,6 +318,7 @@ class GameEngine extends EventEmitter {
     if (maxPlayer) {
       maxPlayer.alive = false;
       this.lastWordsPlayer = maxPlayer;
+      this.deathQueue.push(maxPlayer);  // 加入死亡队列，用于遗言阶段
     }
 
     this.votes = {};
@@ -385,6 +402,78 @@ class GameEngine extends EventEmitter {
       [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
+  }
+
+  // ========== 发言顺序相关方法 ==========
+
+  // 检查玩家是否能发言
+  canSpeak(player) {
+    if (!player.alive) return false;
+    // 白痴翻牌后不能发言
+    if (player.role?.id === 'idiot' && player.state?.revealed) return false;
+    return true;
+  }
+
+  // 计算发言顺序
+  getSpeakerOrder() {
+    const config = this.config.hooks?.RULES?.sheriff || { enabled: true, sheriffAssignOrder: true };
+
+    // 如果有警长且警长指定了顺序，使用警长指定的顺序
+    if (config.enabled && this.sheriff && this.sheriffAssignOrder) {
+      const sheriffPlayer = this.players.find(p => p.id === this.sheriff);
+      if (sheriffPlayer?.alive && this.sheriffAssignOrder?.length > 0) {
+        // 将警长指定的顺序转换为玩家对象
+        return this.sheriffAssignOrder
+          .map(id => this.players.find(p => p.id === id))
+          .filter(p => p && this.canSpeak(p));
+      }
+    }
+
+    // 不带警长或警长未指定顺序：自动计算
+    return this.calculateDefaultSpeakerOrder();
+  }
+
+  // 计算默认发言顺序
+  calculateDefaultSpeakerOrder() {
+    const alivePlayers = this.players.filter(p => this.canSpeak(p));
+    if (alivePlayers.length === 0) return [];
+
+    // 第一轮：从1号开始
+    if (this.dayCount === 1) {
+      return alivePlayers.sort((a, b) => a.id - b.id);
+    }
+
+    // 之后：从第一个死者下一位开始，顺时针，跳过不能发言的人
+    if (this.lastDeathPlayer) {
+      const lastDeathIndex = this.players.findIndex(p => p.id === this.lastDeathPlayer);
+      const totalPlayers = this.players.length;
+
+      // 从死亡玩家下一位开始，顺时针遍历
+      const order = [];
+      for (let i = 1; i <= totalPlayers; i++) {
+        const index = (lastDeathIndex + i) % totalPlayers;
+        const player = this.players[index];
+        if (this.canSpeak(player)) {
+          order.push(player);
+        }
+      }
+      return order;
+    }
+
+    // 没有死亡玩家时，按 ID 顺序
+    return alivePlayers.sort((a, b) => a.id - b.id);
+  }
+
+  // 记录本轮死亡的第一位玩家（用于下一轮发言顺序）
+  recordLastDeath() {
+    if (this.deathQueue.length > 0) {
+      this.lastDeathPlayer = this.deathQueue[0].id;
+    }
+  }
+
+  // 警长指定发言顺序
+  setSheriffOrder(order) {
+    this.sheriffAssignOrder = order;
   }
 }
 

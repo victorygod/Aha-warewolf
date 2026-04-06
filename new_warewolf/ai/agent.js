@@ -80,14 +80,14 @@ class AIAgent {
 
   // 检查 API 是否可用
   isApiAvailable() {
-    return !!(process.env.ANTHROPIC_BASE_URL && process.env.ANTHROPIC_AUTH_TOKEN);
+    return !!(process.env.BASE_URL && process.env.AUTH_TOKEN);
   }
 
   // 调用 API
   async callAPI() {
-    const baseUrl = process.env.ANTHROPIC_BASE_URL;
-    const apiKey = process.env.ANTHROPIC_AUTH_TOKEN;
-    const model = process.env.ANTHROPIC_MODEL;
+    const baseUrl = process.env.BASE_URL;
+    const apiKey = process.env.AUTH_TOKEN;
+    const model = process.env.MODEL;
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',

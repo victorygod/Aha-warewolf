@@ -53,6 +53,11 @@ const RULES = {
   },
   hunter: {
     canShootIfPoisoned: false
+  },
+  // 警长配置
+  sheriff: {
+    enabled: true,  // 是否启用警长机制
+    sheriffAssignOrder: true  // 警长是否指定发言顺序
   }
 };
 
@@ -72,6 +77,7 @@ const HOOKS = {
   getVoteWeight: (player, game) => game.sheriff === player.id ? 1.5 : 1,
   canVote: (player) => player.alive && player.state?.canVote !== false,
   hasLastWords,
+  RULES,
   checkWin: (game) => {
     for (const [camp, condition] of Object.entries(WIN_CONDITIONS)) {
       if (condition(game)) return camp;

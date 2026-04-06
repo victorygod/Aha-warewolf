@@ -50,8 +50,8 @@ class AIController {
   getContext() {
     const state = this.getState();
     const player = this.game.players.find(p => p.id === this.playerId);
-    // 优先使用 game.phase.currentPhase.id，这是更可靠的阶段来源
-    const phase = this.game.phase?.currentPhase?.id || state?.phase;
+    // 优先使用 game.phaseManager.getCurrentPhase().id，这是更可靠的阶段来源
+    const phase = this.game.phaseManager?.getCurrentPhase()?.id || state?.phase;
 
     return {
       phase,
@@ -128,8 +128,8 @@ class AIController {
   // 使用技能（接口对齐）
   async useSkill(data) {
     const player = this.game.players.find(p => p.id === this.playerId);
-    // 优先使用 game.phase.currentPhase.id，这是最可靠的阶段来源
-    const phase = this.game.phase?.currentPhase?.id || this.cachedState?.phase;
+    // 优先使用 game.phaseManager.getCurrentPhase().id，这是最可靠的阶段来源
+    const phase = this.game.phaseManager?.getCurrentPhase()?.id || this.cachedState?.phase;
 
     if (data) {
       const target = data.targetId ? this.game.players.find(p => p.id === data.targetId) : null;

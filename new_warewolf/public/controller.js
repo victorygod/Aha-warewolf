@@ -209,6 +209,27 @@ class Controller {
     }
   }
 
+  // 警长指定发言顺序
+  async setSheriffOrder(order) {
+    if (!this.playerId) return { error: '未加入游戏' };
+
+    try {
+      const res = await fetch('/api/sheriff-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: this.playerId, order })
+      });
+
+      const data = await res.json();
+      if (data.success && data.state) {
+        this.cachedState = data.state;
+      }
+      return data;
+    } catch (e) {
+      return { error: e.message };
+    }
+  }
+
   // 添加 AI
   async addAI() {
     try {
