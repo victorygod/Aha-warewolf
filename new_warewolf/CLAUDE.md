@@ -9,103 +9,56 @@ A **Werewolf (狼人杀) game** with a configurable rule engine, AI players, web
 ## Commands
 
 ```bash
-# Start the server
-npm start
-# Hot reload (Node.js --watch)
-npm run dev
-# Run all tests
-node test/game.test.js
-# Run a single test (modify test file temporarily)
-# Debug mode
-node --inspect server.js
-node server.js --debug  # Enable debug mode in app
+npm start                 # Start server at http://localhost:3000
+npm run dev               # Hot reload (Node.js --watch)
+node test/game.test.js    # Run main test suite (70+ cases)
+node test/*.js            # Run all test files
+node server.js --debug    # Enable debug mode (allows role selection)
 ```
 
-Server runs at `http://localhost:3000`.
+## CLI Client (Simulation Testing)
+
+`cli_client.js` allows simulating a human player via command line for testing
 
 ## Architecture
 
-### Core Principle: Config-Driven Design
+**Config-Driven Design**: Business rules in `config.js` and `roles.js`, not in engine code.
 
-- **GameEngine** (`engine/main.js`): Pure state driver with NO business logic. Only provides low-level APIs (`callSpeech`, `callVote`, `callSkill`, `handleDeath`, `buildActionData`).
-- **PhaseManager** (`engine/phase.js`): Executes game flow via `PHASE_FLOW` array and phase `execute()` functions.
-- **config.js** (`engine/config.js`): ALL business rules—roles, camps, win conditions, rule configurations, hooks (`getCamp`, `getVoteWeight`, `hasLastWords`, `ACTION_FILTERS`).
-- **roles.js** (`engine/roles.js`): Role definitions with skills, constraints, event listeners. Includes `ATTACHMENTS` for sheriff/couple.
+- **GameEngine** (`engine/main.js`): Pure state driver with low-level APIs (`callSpeech`, `callVote`, `callSkill`, `handleDeath`)
+- **PhaseManager** (`engine/phase.js`): Executes game flow via `PHASE_FLOW` array
+- **config.js**: ALL business rules—roles, camps, win conditions, hooks (`getCamp`, `getVoteWeight`, `hasLastWords`, `ACTION_FILTERS`)
+- **roles.js**: Role definitions with skills, constraints, event listeners
 
-### Data Flow
+**Data Flow**: `Phase → GameEngine → PlayerController → AIController/HumanController → MessageManager → Client`
 
-```
-Phase (phase.js) → GameEngine (main.js) → PlayerController (player.js) → AIController/HumanController → MessageManager → Client
-```
+**Key Patterns**:
+- AI and human controllers have identical method signatures (`getSpeechResult`, `getVoteResult`, `useSkill`)
+- Roles subscribe to events (`player:death`, `player:vote`) via `events` property; return `{ cancel: true }` to cancel
+- Human players use `game.requestAction()` for WebSocket-based interaction
 
-### Key Design Patterns
+**Skill Types**: `target` (single), `double_target` (two), `choice` (multi-choice), `instant` (immediate)
 
-1. **Config-driven**: Add roles/mechanics by modifying `config.js` and `roles.js`, not engine code
-2. **Interface alignment**: AI and human controllers have identical method signatures (`getSpeechResult`, `getVoteResult`, `useSkill`)
-3. **Event-driven**: Roles subscribe to events (`player:death`, `player:vote`, etc.) via listeners; return `{ cancel: true }` to cancel
-4. **Phase-based**: Game flows through `PHASE_FLOW` with condition checking
-5. **Request-Action**: Human players use `game.requestAction()` for WebSocket-based interaction
+## Phase Flow
 
-### Phase Flow
-
-**First Night**: cupid → guard → night_werewolf_discuss → night_werewolf_vote → witch → seer → hunter_night
-**Other Nights**: guard → night_werewolf_discuss → night_werewolf_vote → witch → seer → hunter_night
+**First Night**: cupid → guard → werewolf_discuss/vote → witch → seer → hunter_night
+**Other Nights**: guard → werewolf_discuss/vote → witch → seer → hunter_night
 **First Day**: sheriff_campaign → sheriff_speech → sheriff_vote → day_announce → day_discuss → day_vote → post_vote
 **Other Days**: day_announce → day_discuss → day_vote → post_vote
-
-### Phase Types
-
-| Type | Description | Completion |
-|------|-------------|------------|
-| `speech` | Sequential speaking | All speak |
-| `vote` | Parallel voting | All vote |
-| `target` | Select target | Execute |
-| `choice` | Multi-choice (witch) | Complete/end |
-| `campaign` | Opt-in (sheriff) | All decide |
-| `instant` | Instant action (explode, withdraw) | Immediate |
-
-### Win Conditions
-
-- **Good**: All wolves eliminated
-- **Wolf**: All gods killed OR all villagers killed (屠边)
-- **Third** (couple): Both lovers alive, all others dead
-
-## Adding New Mechanics
-
-1. Add phase to `PHASE_FLOW` in `phase.js`
-2. Add/modify role in `roles.js` with skills, events, constraints
-3. Add hooks in `config.js` (`getVoteWeight`, `canVote`, `hasLastWords`, etc.)
-4. Add action filters in `config.js` (`ACTION_FILTERS`) for target validation
-5. Add tests in `test/game.test.js` using `createTestGame()` helper
 
 ## AI Configuration
 
 Create `api_key.conf` for LLM-based AI:
-
 ```json
-{
-  "base_url": "https://api.example.com/v1",
-  "auth_token": "your-token",
-  "model": "model-name"
-}
+{ "base_url": "https://api.example.com/v1", "auth_token": "your-token", "model": "model-name" }
 ```
-
 Without this file, AI uses `RandomAgent` (random decisions).
-
-### AI Agent Types
-
-- `llm`: Uses LLM API for decisions (requires `api_key.conf`)
-- `random`: Random decisions based on available options
-- `mock`: Preset behaviors for testing (use `setResponse()` in tests)
 
 ## Testing
 
 Tests use `MockAgent` for deterministic behavior:
-
 ```javascript
 const { game, aiControllers } = createTestGame(9);
-setAI(aiControllers, playerId, 'vote', targetId);  // Set vote target
-setAI(aiControllers, playerId, 'witch', { action: 'heal' });  // Set witch action
+setAI(aiControllers, playerId, 'vote', targetId);
 await game.phaseManager.executePhase('day_vote');
 ```
 
@@ -113,43 +66,20 @@ await game.phaseManager.executePhase('day_vote');
 
 | File | Purpose |
 |------|---------|
-| `server.js` | Express + WebSocket entry, HTTP static file server |
-| `engine/main.js` | GameEngine (pure state driver) |
+| `server.js` | Express + WebSocket entry |
+| `engine/main.js` | GameEngine (state driver) |
 | `engine/phase.js` | PhaseManager + PHASE_FLOW |
-| `engine/config.js` | Business rules (RULES, WIN_CONDITIONS, HOOKS, ACTION_FILTERS) |
-| `engine/roles.js` | Role definitions + ATTACHMENTS (sheriff, couple) |
-| `engine/player.js` | PlayerController base class + HumanController |
-| `engine/message.js` | MessageManager with visibility control (public/self/camp/couple) |
-| `engine/vote.js` | VoteManager for vote calculation and election resolution |
-| `engine/night.js` | NightManager for night action resolution |
-| `ai/controller.js` | AIController + AIManager (LLM/Random/Mock agents) |
-| `ai/prompts.js` | System prompts, phase prompts, AI profiles |
-| `ai/agents/` | Individual agent implementations |
-| `test/game.test.js` | 70+ test cases using MockAgent |
+| `engine/config.js` | Business rules |
+| `engine/roles.js` | Role definitions |
+| `engine/player.js` | PlayerController + HumanController |
+| `ai/controller.js` | AIController (LLM/Random/Mock) |
+| `test/*.js` | 70+ test cases |
 
-## Debugging
+## Mention
 
-- Enable debug mode: `node server.js --debug`
-- State includes `debugMode` flag for frontend
-- Players can select `debugRole` during join for testing
-- Logs: `logs/backend.log`, `logs/agent.log`, `logs/frontend.log`
-
-## Common Tasks
-
-### Add a new role
-1. Define in `roles.js` with `id`, `name`, `camp`, `type`, `skills`, `events`
-2. Add role to role pool in `engine/main.js` `assignRoles()`
-3. Add to `ai/prompts.js` for AI prompts
-
-### Add a new phase
-1. Add to `PHASE_FLOW` in `phase.js` with `id`, `name`, `condition`, `execute`
-2. Handle in game loop if needed
-
-### Modify game rules
-1. Update `RULES` in `config.js`
-2. Update `HOOKS` for custom behavior
-3. Update `WIN_CONDITIONS` if changing victory logic
-
-## Memtion
 1. 总是保证每个测试用例都能跑通
 2. 文档不要有大段代码，用自然语言或伪代码描述逻辑
+3. 正式代码里的日志都要靠utils/logger.js来输出，禁止console.log
+4. 用cli_client.js玩的时候，多看看后端日志和后端代码，时刻留心什么不合理的地方，记录文档并自己分析代码看看是否需要修复
+5. 创建AI,0.001s就能创建完
+6. 等待随机AI的行动一般 0.01s就能全部结束

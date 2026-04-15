@@ -6,17 +6,11 @@
 const { PlayerController } = require('../engine/player');
 const { RandomAgent, LLMAgent, MockAgent } = require('./agents');
 const { createLogger } = require('../utils/logger');
+const { getPlayerDisplay } = require('../engine/utils');
 
-// 创建日志实例（延迟初始化）
-let agentLogger = null;
+// 创建日志实例（延迟初始化，只使用backend.log）
 let backendLogger = null;
 function getLogger() {
-  if (!agentLogger) {
-    agentLogger = createLogger('agent.log');
-  }
-  return agentLogger;
-}
-function getBackendLogger() {
   if (!backendLogger) {
     // 优先使用 global.backendLogger（server.js中创建），否则创建新的
     backendLogger = global.backendLogger || createLogger('backend.log');
@@ -147,7 +141,7 @@ class AIController extends PlayerController {
 
     const logMsg = `[AI] ${player?.name} 发言: ${content}`;
     getLogger().info(logMsg);
-    getBackendLogger().info(logMsg);
+    getLogger().info(logMsg);
     return { content, visibility };
   }
 
@@ -175,16 +169,20 @@ class AIController extends PlayerController {
       targetId = extraData.allowedTargets[Math.floor(Math.random() * extraData.allowedTargets.length)];
     }
 
+    // 记录可选投票范围
+    if (extraData?.allowedTargets?.length > 0) {
+      const targetsStr = extraData.allowedTargets.map(id => {
+        const p = this.game.players.find(x => x.id === id);
+        return p ? getPlayerDisplay(this.game.players, p) : `${id}号`;
+      }).join(', ');
+      getLogger().info(`[AI] ${player?.name} 可选投票范围: ${targetsStr}`);
+    }
+
     if (targetId) {
       const target = this.game.players.find(p => p.id === targetId);
-      const pos = this.game.getPosition(targetId);
-      const logMsg = `[AI] ${player?.name} 投票给 ${pos}号 ${target?.name}`;
-      getLogger().info(logMsg);
-      getBackendLogger().info(logMsg);
+      getLogger().info(`[AI] ${player?.name} 投票给 ${getPlayerDisplay(this.game.players, target)}`);
     } else {
-      const logMsg = `[AI] ${player?.name} 选择弃权`;
-      getLogger().info(logMsg);
-      getBackendLogger().info(logMsg);
+      getLogger().info(`[AI] ${player?.name} 选择弃权`);
     }
 
     return { targetId };
@@ -215,7 +213,6 @@ class AIController extends PlayerController {
     const 可选目标 = this.formatAllowedTargets(actionType, extraData);
     const logMsg = `[AI] ${player.name} 使用技能 ${actionType}，可选: ${可选目标} → ${JSON.stringify(normalizedAction)}`;
     getLogger().info(logMsg);
-    getBackendLogger().info(logMsg);
 
     // 执行技能
     return this.executeSkill(skill, normalizedAction, extraData);
@@ -229,14 +226,29 @@ class AIController extends PlayerController {
       if (extraData?.healAvailable) options.push('救');
       if (extraData?.poisonAvailable) options.push('毒');
       options.push('跳过');
-      return options.join('/');
+      let result = options.join('/');
+      // 女巫：显示谁被杀 + 可毒杀范围
+      if (extraData?.werewolfTarget) {
+        const target = this.game.players.find(p => p.id === extraData.werewolfTarget);
+        result += ` | 被杀: ${getPlayerDisplay(this.game.players, target)}`;
+      } else {
+        result += ' | 被杀: 无';
+      }
+      if (extraData?.poisonTargets?.length > 0) {
+        const targetsStr = extraData.poisonTargets.map(id => {
+          const p = this.game.players.find(x => x.id === id);
+          return p ? getPlayerDisplay(this.game.players, p) : `${id}号`;
+        }).join(', ');
+        result += ` | 可毒: ${targetsStr}`;
+      }
+      return result;
     }
 
     // target 类型（如守卫、预言家、猎人、传警徽、指定发言顺序等）
     if (extraData?.allowedTargets?.length > 0) {
       return extraData.allowedTargets.map(id => {
         const target = this.game.players.find(p => p.id === id);
-        return target ? `${id}号${target.name}` : `${id}号`;
+        return target ? getPlayerDisplay(this.game.players, target) : `${id}号`;
       }).join(', ');
     }
 
@@ -245,14 +257,14 @@ class AIController extends PlayerController {
       const player = this.getPlayer();
       const targets = this.game.players.filter(p => p.alive && p.id !== player?.id);
       if (targets.length > 0) {
-        return targets.map(p => `${p.id}号${p.name}`).join(', ');
+        return targets.map(p => getPlayerDisplay(this.game.players, p)).join(', ');
       }
       return '无存活玩家';
     }
 
     // cupid 类型（连接两个玩家）
     if (actionType === 'cupid' && extraData?.allowedTargets?.length >= 2) {
-      return extraData.allowedTargets.map(id => `${id}号`).join(', ');
+      return extraData.allowedTargets.map(id => `${this.game.getPosition(id)}号`).join(', ');
     }
 
     return '无';

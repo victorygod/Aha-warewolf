@@ -73,12 +73,14 @@ const ROLES = {
       witch: {
         type: 'choice',
         visibility: 'self',
-        execute: (choice, player, game) => {
+        execute: (choice, player, game, extraData) => {
           const { action, targetId } = choice;
 
           // 使用解药
           if (action === 'heal' && player.state.heal > 0) {
-            if (game.werewolfTarget && !RULES.witch.canSelfHeal && game.werewolfTarget === player.id) {
+            // 检查是否可以自救：extraData.canSelfHeal 优先，否则使用 RULES 配置
+            const canSelfHeal = extraData?.canSelfHeal ?? RULES.witch.canSelfHeal;
+            if (game.werewolfTarget && !canSelfHeal && game.werewolfTarget === player.id) {
               return { success: false, message: '不能自救' };
             }
             player.state.heal--;

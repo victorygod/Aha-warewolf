@@ -121,7 +121,7 @@ const PHASE_FLOW = [
         werewolfTarget: game.werewolfTarget,
         healAvailable: witch.state?.heal > 0,
         poisonAvailable: witch.state?.poison > 0,
-        canSelfHeal: game.config.hooks?.RULES?.witch?.canSelfHeal !== false && game.nightCount > 0
+        canSelfHeal: game.config.hooks?.RULES?.witch?.canSelfHeal !== false && game.nightCount === 1
       };
       await game.callSkill(witch.id, 'witch', extraData);
     }
@@ -148,11 +148,13 @@ const PHASE_FLOW = [
     name: '警长竞选',
     condition: (game) => game.dayCount === 0,
     execute: async (game) => {
-      // 询问所有存活玩家是否参加竞选
+      // 询问所有存活玩家是否参加竞选（并发执行，保密决定）
       const candidates = game.players.filter(p => p.alive);
-      for (const player of candidates) {
-        const result = await game.callSkill(player.id, 'campaign');
-        // 只有明确run=true才算参加竞选
+      const results = await Promise.all(candidates.map(p =>
+        game.callSkill(p.id, 'campaign').then(r => ({ player: p, result: r }))
+      ));
+      // 处理结果
+      for (const { player, result } of results) {
         if (result?.run === true) {
           player.state = player.state || {};
           player.state.isCandidate = true;
@@ -184,10 +186,12 @@ const PHASE_FLOW = [
       const candidates = game.players.filter(p => p.alive && p.state?.isCandidate && !p.state?.withdrew);
       await game.callSpeech(candidates.map(p => p.id));
 
-      // 询问是否退水
-      for (const player of candidates) {
-        const result = await game.callSkill(player.id, 'withdraw');
-        // 只有明确withdraw=true才算退水
+      // 询问是否退水（并发执行）
+      const results = await Promise.all(candidates.map(p =>
+        game.callSkill(p.id, 'withdraw').then(r => ({ player: p, result: r }))
+      ));
+      // 处理结果
+      for (const { player, result } of results) {
         if (result?.withdraw === true) {
           player.state.withdrew = true;
         }

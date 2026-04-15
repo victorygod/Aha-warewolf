@@ -1,6 +1,13 @@
 /**
  * 日志模块
  * 每次服务器启动时清空日志目录
+ *
+ * 日志级别说明：
+ * - INFO: 玩家行为（发言、投票、技能使用）、阶段变更
+ * - DEBUG: 工程调试信息（AI context、内部状态等）
+ * - WARN/ERROR: 警告和错误
+ *
+ * 通过设置环境变量 DEBUG=1 开启 DEBUG 日志
  */
 
 const fs = require('fs');
@@ -11,6 +18,9 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 // logs 目录路径
 const LOGS_DIR = path.join(PROJECT_ROOT, 'logs');
+
+// DEBUG 模式开关（通过环境变量 DEBUG=1 开启）
+const DEBUG_MODE = process.env.DEBUG === '1';
 
 // 确保 logs 目录存在
 function ensureLogsDir() {
@@ -57,6 +67,11 @@ function getRelativePath(fullPath) {
 
 // 写入日志（带文件路径和行号）
 function writeLog(filepath, level, msg) {
+  // DEBUG 日志需要开启 DEBUG 模式才写入
+  if (level === 'DEBUG' && !DEBUG_MODE) {
+    return;
+  }
+
   // 获取调用者的文件路径和行号
   const stack = new Error().stack;
   const callerLine = stack.split('\n')[3]; // 第0行是Error, 1是writeLog, 2是caller, 3是实际调用者

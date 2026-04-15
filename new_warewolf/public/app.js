@@ -38,7 +38,9 @@ let currentAction = null;
 
 // 初始化
 function init() {
-  console.log('初始化狼人杀游戏...');
+  if (window.frontendLogger) {
+    window.frontendLogger.info('初始化狼人杀游戏...');
+  }
 
   elements.readyBtn.addEventListener('click', ready);
   elements.sendBtn.addEventListener('click', sendSpeech);
@@ -109,7 +111,9 @@ function showOpeningMessage() {
 function handleActionRequired(msg) {
   currentAction = msg;
   const d = msg.data;  // 实际数据在 msg.data 里
-  console.log('[UI] 行动请求:', d.action, d.requestId);
+  if (window.frontendLogger) {
+    window.frontendLogger.info(`[UI] 行动请求: ${d.action}, requestId: ${d.requestId}, allowedTargets: ${JSON.stringify(d.allowedTargets)}`);
+  }
 
   // 根据行动类型显示不同的 UI
   const state = controller.getState();
@@ -133,6 +137,9 @@ function handleActionRequired(msg) {
     case 'sheriff_vote':
       elements.voteButtons.classList.add('active');
       elements.actionPrompt.textContent = d.action === 'wolf_vote' ? '请选择刀人目标' : (d.action === 'sheriff_vote' ? '请投票选警长' : '请投票');
+      if (window.frontendLogger) {
+        window.frontendLogger.info(`[Vote] 可选目标: ${JSON.stringify(d.allowedTargets)}`);
+      }
       renderVoteButtons(state, myPlayer, d.allowedTargets, d.action);
       break;
 
@@ -212,7 +219,9 @@ function handleActionRequired(msg) {
       break;
 
     default:
-      console.log('[UI] 未知行动类型:', d.action);
+      if (window.frontendLogger) {
+        window.frontendLogger.info(`[UI] 未知行动类型: ${d.action}`);
+      }
   }
 }
 
@@ -375,13 +384,14 @@ function renderWitchButtons(state, myPlayer, d) {
     const myId = myPlayer?.id;
     const isSelfTargeted = d.werewolfTarget === myId;
 
-    // 检查是否可以自救（第一夜不能自救）
+    // 检查是否可以自救（仅首夜可以自救）
     const canSelfHeal = d.canSelfHeal !== false;
 
+    const targetPos = controller.getPlayerPosition(d.werewolfTarget);
     if (isSelfTargeted && !canSelfHeal) {
-      elements.actionPrompt.innerHTML = `<strong>今晚 ${target?.name || '某人'} 被狼人杀害！（首夜不能自救）</strong>`;
+      elements.actionPrompt.innerHTML = `<strong>今晚 ${targetPos}号${target?.name || '某人'} 被狼人杀害！（非首夜不能自救）</strong>`;
     } else {
-      elements.actionPrompt.innerHTML = `<strong>今晚 ${target?.name || '某人'} 被狼人杀害！</strong>`;
+      elements.actionPrompt.innerHTML = `<strong>今晚 ${targetPos}号${target?.name || '某人'} 被狼人杀害！</strong>`;
     }
   } else {
     elements.actionPrompt.textContent = '今晚没有人被狼人杀害。';
@@ -394,7 +404,7 @@ function renderWitchButtons(state, myPlayer, d) {
     const isSelfTargeted = d.werewolfTarget === myId;
     const canSelfHeal = d.canSelfHeal !== false;
 
-    // 首夜不能自救
+    // 非首夜不能自救
     if (isSelfTargeted && !canSelfHeal) {
       // 不显示自救按钮
     } else {
@@ -775,7 +785,9 @@ function displayMessage(msg, state) {
   } else if (msg.type === 'sheriff_elected') {
     addMessage(msg.content, 'sheriff-elected', msg.id);
   } else if (msg.type === 'death_announce' && msg.deaths) {
-    console.log('[Death] msg:', msg);
+    if (window.frontendLogger) {
+      window.frontendLogger.info(`[Death] msg: ${JSON.stringify(msg)}`);
+    }
     // 显示死亡消息
     let content = '<div class="death-announce">';
     msg.deaths.forEach(d => {
@@ -895,8 +907,9 @@ function updateDefaultAction(state) {
     let gameOverHtml = `<div class="game-over"><strong>${winnerText}</strong>`;
     gameOverHtml += '<div class="all-roles">';
     if (state.gameOverInfo && state.gameOverInfo.players) {
-      state.gameOverInfo.players.forEach(p => {
-        const display = p.display || `${p.id}号${p.name}`;
+      state.gameOverInfo.players.forEach((p, idx) => {
+        // 使用后端传来的 display，fallback 用索引计算位置
+        const display = p.display || `${idx + 1}号${p.name}`;
         const roleName = p.role ? ROLE_NAMES[p.role.id] || p.role.id : '未知';
         const deathInfo = p.alive ? '存活' : (p.deathReason ? `死亡(${p.deathReason})` : '死亡');
         const sheriffMark = p.isSheriff ? ' 🏅警长' : '';

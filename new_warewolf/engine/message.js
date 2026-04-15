@@ -50,10 +50,10 @@ class MessageManager extends EventEmitter {
   }
 
   // 添加消息
-  add({ type, content, playerId, playerName, visibility = 'public', metadata = {}, voteDetails, voteCounts }) {
+  add({ type, content, playerId, playerName, visibility = 'public', metadata = {}, voteDetails, voteCounts, phase, phaseName, deaths }) {
     const msg = {
       id: this._nextId++,
-      type,        // speech/vote/action/system/death
+      type,        // speech/vote/action/system/death/phase_start
       content,
       playerId,    // 发送者
       playerName,  // 玩家名称
@@ -61,6 +61,9 @@ class MessageManager extends EventEmitter {
       metadata,    // 额外信息（如投票目标、技能类型等）
       voteDetails, // 投票详情（用于显示票型）
       voteCounts,  // 投票计数（用于显示各候选人票数）
+      phase,       // 阶段ID（用于 phase_start 消息）
+      phaseName,   // 阶段名称
+      deaths,      // 死亡玩家数组（用于 death_announce 消息）
       timestamp: Date.now()
     };
     this.messages.push(msg);

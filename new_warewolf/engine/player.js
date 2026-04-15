@@ -5,6 +5,7 @@
  */
 
 const { createLogger } = require('../utils/logger');
+const { getPlayerDisplay } = require('./utils');
 
 // 创建日志实例（延迟初始化）
 let backendLogger = null;
@@ -73,14 +74,29 @@ class PlayerController {
       if (extraData?.healAvailable) options.push('救');
       if (extraData?.poisonAvailable) options.push('毒');
       options.push('跳过');
-      return options.join('/');
+      let result = options.join('/');
+      // 女巫：显示谁被杀 + 可毒杀范围
+      if (extraData?.werewolfTarget) {
+        const target = this.game.players.find(p => p.id === extraData.werewolfTarget);
+        result += ` | 被杀: ${getPlayerDisplay(this.game.players, target)}`;
+      } else {
+        result += ' | 被杀: 无';
+      }
+      if (extraData?.poisonTargets?.length > 0) {
+        const targetsStr = extraData.poisonTargets.map(id => {
+          const p = this.game.players.find(x => x.id === id);
+          return p ? getPlayerDisplay(this.game.players, p) : `${id}号`;
+        }).join(', ');
+        result += ` | 可毒: ${targetsStr}`;
+      }
+      return result;
     }
 
     // target 类型（如守卫、预言家、猎人等）
     if (extraData?.allowedTargets?.length > 0) {
       return extraData.allowedTargets.map(id => {
         const player = this.game.players.find(p => p.id === id);
-        return player ? `${id}号${player.name}` : `${id}号`;
+        return player ? getPlayerDisplay(this.game.players, player) : `${id}号`;
       }).join(', ');
     }
 
@@ -130,7 +146,7 @@ class PlayerController {
         return this.executeDoubleTargetSkill(skill, player, action);
 
       case 'choice':
-        return this.executeChoiceSkill(skill, player, action);
+        return this.executeChoiceSkill(skill, player, action, extraData);
 
       case 'instant':
         return this.executeInstantSkill(skill, player, action);
@@ -190,9 +206,9 @@ class PlayerController {
   }
 
   // choice 类型技能执行（女巫）
-  executeChoiceSkill(skill, player, action) {
+  executeChoiceSkill(skill, player, action, extraData = {}) {
     const choice = action || { action: 'skip' };
-    const result = skill.execute(choice, player, this.game);
+    const result = skill.execute(choice, player, this.game, extraData);
     return { success: true, ...result };
   }
 

@@ -60,9 +60,13 @@ class VoteManager {
 
   // 广播投票结果
   _broadcastVoteResult(title, voteDetails, voteCounts) {
+    // 格式化票型
+    const voteLines = voteDetails.map(d => `${d.voter} → ${d.target}`);
+    const content = `${title}\n${voteLines.join('\n')}`;
+
     this.game.message.add({
       type: 'vote_result',
-      content: title,
+      content,
       voteDetails,
       voteCounts,
       visibility: 'public',

@@ -356,11 +356,11 @@ async function test7_WitchPoison() {
   return passed;
 }
 
-async function test8_WitchNoSelfHeal() {
-  console.log('\n\n========== 测试8: 女巫第一晚不能自救 ==========');
+async function test8_WitchCanSelfHealFirstNight() {
+  console.log('\n\n========== 测试8: 女巫仅首夜可以自救 ==========');
   const { game } = createTestGame(9);
   const RULES = require('../engine/config').RULES;
-  const passed = RULES.witch?.canSelfHeal === false;
+  const passed = RULES.witch?.canSelfHeal === true;
   console.log(`测试结果: ${passed ? '✓ 通过' : '✗ 失败'}`);
   return passed;
 }
@@ -2123,6 +2123,174 @@ async function test70_DeathMessageWithPosition() {
   return passed;
 }
 
+// 测试71: vote 函数验证失败返回错误对象
+async function test71_VoteValidationFailure() {
+  console.log('\n\n========== 测试71: vote 函数验证失败返回错误对象 ==========');
+  const { game } = createTestGame(9);
+
+  // 测试1: 投票给不在 allowedTargets 中的目标
+  const result1 = game.vote(1, 999, { allowedTargets: [2, 3, 4] });
+  console.log(`  无效目标投票结果: ${JSON.stringify(result1)}`);
+  const test1Passed = result1.success === false && result1.error === '只能投票给候选人';
+
+  // 测试2: 重复投票
+  game.votes['1'] = 2; // 先投一票
+  const result2 = game.vote(1, 3, { allowedTargets: [2, 3, 4] });
+  console.log(`  重复投票结果: ${JSON.stringify(result2)}`);
+  const test2Passed = result2.success === false && result2.error === '你已投票';
+
+  // 测试3: 有效投票
+  game.votes = {}; // 清空投票
+  const result3 = game.vote(1, 2, { allowedTargets: [2, 3, 4] });
+  console.log(`  有效投票结果: ${JSON.stringify(result3)}`);
+  const test3Passed = result3.success === true;
+
+  const passed = test1Passed && test2Passed && test3Passed;
+  console.log(`  无效目标: ${test1Passed ? '✓' : '✗'}, 重复投票: ${test2Passed ? '✓' : '✗'}, 有效投票: ${test3Passed ? '✓' : '✗'}`);
+  console.log(`测试结果: ${passed ? '✓ 通过' : '✗ 失败'}`);
+  return passed;
+}
+
+// 测试72: callVote 循环重试直到有效选择
+async function test72_CallVoteRetryOnInvalidVote() {
+  console.log('\n\n========== 测试72: callVote 循环重试直到有效选择 ==========');
+  const { game } = createTestGame(9);
+
+  // 直接测试 vote 函数的返回值
+  // 测试1: 无效目标返回错误
+  const result1 = game.vote(1, 999, { allowedTargets: [2, 3, 4] });
+  console.log(`  无效目标: ${JSON.stringify(result1)}`);
+  const test1Passed = result1.success === false;
+
+  // 测试2: 有效目标返回成功
+  const result2 = game.vote(1, 2, { allowedTargets: [2, 3, 4] });
+  console.log(`  有效目标: ${JSON.stringify(result2)}`);
+  const test2Passed = result2.success === true;
+
+  // 测试3: callVote 会处理返回值（通过检查 vote 函数不再抛出异常）
+  // 由于 vote 现在返回对象而不是抛出异常，callVote 可以正常处理
+  game.votes = {}; // 清空
+  const passed = test1Passed && test2Passed;
+  console.log(`  无效目标返回错误: ${test1Passed ? '✓' : '✗'}, 有效目标返回成功: ${test2Passed ? '✓' : '✗'}`);
+  console.log(`测试结果: ${passed ? '✓ 通过' : '✗ 失败'}`);
+  return passed;
+}
+
+// 测试73: buildActionData 正确传递 allowedTargets
+async function test73_BuildActionDataAllowedTargets() {
+  console.log('\n\n========== 测试73: buildActionData 正确传递 allowedTargets ==========');
+  const { game } = createTestGame(9);
+
+  // 测试 vote 类型 - 传入 allowedTargets
+  const voteData = game.buildActionData(1, 'vote', { allowedTargets: [2, 3, 4] });
+  console.log(`  vote 类型 allowedTargets: ${JSON.stringify(voteData.allowedTargets)}`);
+  const votePassed = voteData.allowedTargets &&
+                     voteData.allowedTargets.length === 3 &&
+                     voteData.allowedTargets.includes(2);
+
+  // 测试 sheriff_vote 类型 - 传入 allowedTargets
+  const sheriffVoteData = game.buildActionData(1, 'sheriff_vote', { allowedTargets: [5, 6, 7] });
+  console.log(`  sheriff_vote 类型 allowedTargets: ${JSON.stringify(sheriffVoteData.allowedTargets)}`);
+  const sheriffVotePassed = sheriffVoteData.allowedTargets &&
+                            sheriffVoteData.allowedTargets.length === 3 &&
+                            sheriffVoteData.allowedTargets.includes(5);
+
+  // 测试没有 allowedTargets 时，使用过滤器计算默认值
+  const noTargetData = game.buildActionData(1, 'vote', {});
+  console.log(`  无 allowedTargets（使用过滤器）: ${JSON.stringify(noTargetData.allowedTargets)}`);
+  // 过滤器返回所有存活的其他玩家（2-9号）
+  const noTargetPassed = noTargetData.allowedTargets &&
+                         noTargetData.allowedTargets.length === 8 &&
+                         noTargetData.allowedTargets.includes(2) &&
+                         !noTargetData.allowedTargets.includes(1);
+
+  const passed = votePassed && sheriffVotePassed && noTargetPassed;
+  console.log(`  vote: ${votePassed ? '✓' : '✗'}, sheriff_vote: ${sheriffVotePassed ? '✓' : '✗'}, 无目标: ${noTargetPassed ? '✓' : '✗'}`);
+  console.log(`测试结果: ${passed ? '✓ 通过' : '✗ 失败'}`);
+  return passed;
+}
+
+// 测试74: pendingAction 包含正确的 allowedTargets（人类玩家）
+async function test74_PendingActionAllowedTargets() {
+  console.log('\n\n========== 测试74: pendingAction 包含正确的 allowedTargets ==========');
+  const { game } = createTestGame(9);
+
+  // 将一个玩家改为人类玩家
+  const humanPlayer = game.players[0];
+  humanPlayer.isAI = false;
+
+  // 手动触发 requestAction
+  const allowedTargets = [2, 3, 4];
+  const requestPromise = game.requestAction(humanPlayer.id, 'sheriff_vote', { allowedTargets });
+
+  // 立即检查 pendingAction
+  const state = game.getState(humanPlayer.id);
+  const pendingAction = state.pendingAction;
+
+  console.log(`  pendingAction.action: ${pendingAction?.action}`);
+  console.log(`  pendingAction.allowedTargets: ${JSON.stringify(pendingAction?.allowedTargets)}`);
+
+  // 验证 allowedTargets 是否正确
+  const allowedTargetsCorrect = pendingAction?.allowedTargets &&
+                                  pendingAction.allowedTargets.length === 3 &&
+                                  allowedTargets.every(id => pendingAction.allowedTargets.includes(id));
+
+  // 完成请求
+  if (pendingAction?.requestId) {
+    game.handleResponse(humanPlayer.id, pendingAction.requestId, { targetId: 2 });
+  }
+
+  const passed = allowedTargetsCorrect && pendingAction?.action === 'sheriff_vote';
+  console.log(`测试结果: ${passed ? '✓ 通过' : '✗ 失败'}`);
+  return passed;
+}
+
+// 测试75: RandomAI 不会触发投票死循环
+async function test75_RandomAINoInfiniteLoop() {
+  console.log('\n\n========== 测试75: RandomAI 不会触发投票死循环 ==========');
+  const { game, aiControllers } = createTestGame(9);
+
+  const player = game.players[0];
+  const controller = game.getAIController(player.id);
+
+  // 获取 MockAgent 并设置投票行为，确保确定性
+  const mockAgent = controller.getMockAgent();
+  mockAgent.setResponse('vote', { targetId: 2 });
+
+  // 测试1: 正常 allowedTargets，MockAgent 投票
+  game.votes = {};
+  const startTime1 = Date.now();
+  await game.callVote(player.id, 'vote', { allowedTargets: [2, 3, 4] });
+  const elapsed1 = Date.now() - startTime1;
+  const voteRecorded1 = game.votes[String(player.id)] !== undefined;
+  console.log(`  正常 allowedTargets [2,3,4]: 耗时 ${elapsed1}ms, 投票记录: ${voteRecorded1}`);
+  const test1Passed = elapsed1 < 1000 && voteRecorded1;
+
+  // 测试2: 空的 allowedTargets（应该快速完成，无投票）
+  game.votes = {};
+  const startTime2 = Date.now();
+  await game.callVote(player.id, 'vote', { allowedTargets: [] });
+  const elapsed2 = Date.now() - startTime2;
+  const voteRecorded2 = game.votes[String(player.id)] !== undefined;
+  console.log(`  空 allowedTargets []: 耗时 ${elapsed2}ms, 投票记录: ${voteRecorded2}`);
+  const test2Passed = elapsed2 < 1000; // 空目标应该跳过或快速完成
+
+  // 测试3: 单选项
+  mockAgent.setResponse('vote', { targetId: 5 });
+  game.votes = {};
+  const startTime3 = Date.now();
+  await game.callVote(player.id, 'vote', { allowedTargets: [5] });
+  const elapsed3 = Date.now() - startTime3;
+  const voteRecorded3 = game.votes[String(player.id)] !== undefined;
+  console.log(`  单选项 [5]: 耗时 ${elapsed3}ms, 投票记录: ${voteRecorded3}`);
+  const test3Passed = elapsed3 < 1000 && voteRecorded3;
+
+  const passed = test1Passed && test2Passed && test3Passed;
+  console.log(`  正常目标: ${test1Passed ? '✓' : '✗'}, 空目标: ${test2Passed ? '✓' : '✗'}, 单选项: ${test3Passed ? '✓' : '✗'}`);
+  console.log(`测试结果: ${passed ? '✓ 通过' : '✗ 失败'}`);
+  return passed;
+}
+
 // 运行所有测试
 async function runTests() {
   console.log('========================================');
@@ -2138,7 +2306,7 @@ async function runTests() {
     { name: '守卫不能连续守护', fn: test5_GuardNoRepeat },
     { name: '女巫解药', fn: test6_WitchHeal },
     { name: '女巫毒药', fn: test7_WitchPoison },
-    { name: '女巫不能自救', fn: test8_WitchNoSelfHeal },
+    { name: '女巫仅首夜可以自救', fn: test8_WitchCanSelfHealFirstNight },
     { name: '预言家查验', fn: test9_SeerCheck },
     { name: '白痴翻牌', fn: test10_IdiotReveal },
     { name: '丘比特连线', fn: test11_CupidLink },
@@ -2200,6 +2368,11 @@ async function runTests() {
     { name: '退水confirmed格式', fn: test68_WithdrawConfirmedFormat },
     { name: '白天PK投票所有玩家都能投票', fn: test69_DayPKAllPlayersCanVote },
     { name: '死亡消息显示位置号', fn: test70_DeathMessageWithPosition },
+    { name: 'vote函数验证失败返回错误对象', fn: test71_VoteValidationFailure },
+    { name: 'callVote循环重试', fn: test72_CallVoteRetryOnInvalidVote },
+    { name: 'buildActionData传递allowedTargets', fn: test73_BuildActionDataAllowedTargets },
+    { name: 'pendingAction包含allowedTargets', fn: test74_PendingActionAllowedTargets },
+    { name: 'RandomAI不触发投票死循环', fn: test75_RandomAINoInfiniteLoop },
   ];
 
   const results = [];

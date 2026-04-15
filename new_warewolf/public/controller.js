@@ -40,9 +40,8 @@ class Controller {
     }
 
     this.ws.onopen = () => {
-      console.log('[WS] 连接成功');
       if (window.frontendLogger) {
-        window.frontendLogger.info('WebSocket 连接成功');
+        window.frontendLogger.info('[WS] 连接成功');
       }
       // 发送加入消息
       this.send('join', { name, debugRole });
@@ -53,12 +52,16 @@ class Controller {
         const msg = JSON.parse(e.data);
         this.handleMessage(msg);
       } catch (err) {
-        console.error('[WS] 消息解析错误:', err);
+        if (window.frontendLogger) {
+          window.frontendLogger.error(`[WS] 消息解析错误: ${err}`);
+        }
       }
     };
 
     this.ws.onclose = () => {
-      console.log('[WS] 连接关闭');
+      if (window.frontendLogger) {
+        window.frontendLogger.info('[WS] 连接关闭');
+      }
       // 尝试重连
       setTimeout(() => {
         if (this.playerName) {
@@ -68,7 +71,9 @@ class Controller {
     };
 
     this.ws.onerror = (err) => {
-      console.error('[WS] 错误:', err);
+      if (window.frontendLogger) {
+        window.frontendLogger.error(`[WS] 错误: ${err}`);
+      }
     };
   }
 
@@ -110,14 +115,18 @@ class Controller {
         break;
 
       case 'error':
-        console.error('[WS] 服务器错误:', msg.message);
+        if (window.frontendLogger) {
+          window.frontendLogger.error(`[WS] 服务器错误: ${msg.message}`);
+        }
         if (this.onStateChange) {
           this.onStateChange({ ...this.cachedState, error: msg.message });
         }
         break;
 
       case 'phase_start':
-        console.log('[WS] 阶段开始:', msg.phase, msg.phaseName);
+        if (window.frontendLogger) {
+          window.frontendLogger.info(`[WS] 阶段开始: ${msg.phase} ${msg.phaseName || ''}`);
+        }
         // phase_start 消息会通过 state.messages 同步，不需要手动添加
         if (this.onStateChange) {
           this.onStateChange(this.cachedState);
@@ -125,18 +134,24 @@ class Controller {
         break;
 
       case 'phase_end':
-        console.log('[WS] 阶段结束:', msg.phase);
+        if (window.frontendLogger) {
+          window.frontendLogger.info(`[WS] 阶段结束: ${msg.phase}`);
+        }
         break;
 
       case 'death_announce':
-        console.log('[WS] 死亡公告:', msg.deaths);
+        if (window.frontendLogger) {
+          window.frontendLogger.info(`[WS] 死亡公告: ${JSON.stringify(msg.deaths)}`);
+        }
         if (this.onStateChange) {
           this.onStateChange(this.cachedState);
         }
         break;
 
       default:
-        console.log('[WS] 未知消息类型:', msg.type);
+        if (window.frontendLogger) {
+          window.frontendLogger.info(`[WS] 未知消息类型: ${msg.type}`);
+        }
     }
   }
 

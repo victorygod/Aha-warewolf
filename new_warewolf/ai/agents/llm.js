@@ -4,15 +4,16 @@
  */
 
 const { buildSystemPrompt, getPhasePrompt } = require('../prompts');
+const { formatMessageHistory } = require('../context');
 const { createLogger } = require('../../utils/logger');
 
-// 创建日志实例（延迟初始化）
-let agentLogger = null;
+// 创建日志实例（延迟初始化，只使用backend.log）
+let backendLogger = null;
 function getLogger() {
-  if (!agentLogger) {
-    agentLogger = createLogger('agent.log');
+  if (!backendLogger) {
+    backendLogger = global.backendLogger || createLogger('backend.log');
   }
-  return agentLogger;
+  return backendLogger;
 }
 
 class LLMAgent {
@@ -53,38 +54,14 @@ class LLMAgent {
 
   // 构建消息
   buildMessages(context) {
-    const historyText = this.formatMessageHistory(context.messages);
+    const historyText = formatMessageHistory(context.messages, this.game.players);
     const phasePrompt = getPhasePrompt(context.phase, context);
-    const userContent = `${historyText}${phasePrompt}`;
+    const userContent = `${historyText}\n\n${phasePrompt}`;
 
     this.lastMessages = [
       { role: 'system', content: this.systemPrompt },
       { role: 'user', content: userContent }
     ];
-  }
-
-  // 格式化消息历史
-  formatMessageHistory(messages) {
-    if (!messages || messages.length === 0) return '';
-
-    const lines = [];
-    messages.forEach(msg => {
-      if (msg.type === 'phase_start') {
-        lines.push(`\n===== ${msg.content} =====`);
-      } else if (msg.type === 'speech' || msg.type === 'wolf_speech') {
-        const playerIndex = this.game.players.findIndex(p => p.id === msg.playerId);
-        const pos = playerIndex >= 0 ? playerIndex + 1 : '?';
-        lines.push(`[发言] ${pos}号${msg.playerName}：${msg.content}`);
-      } else if (msg.type === 'death') {
-        lines.push(`【死亡】${msg.content}`);
-      } else if (msg.type === 'vote') {
-        lines.push(`【投票】${msg.content}`);
-      } else if (msg.type === 'skill_result') {
-        lines.push(`【技能】${msg.content}`);
-      }
-    });
-
-    return lines.join('\n') + '\n\n';
   }
 
   // 检查 API 是否可用
@@ -137,13 +114,40 @@ class LLMAgent {
           return { type: 'vote', target: this.normalizeTarget(data.target, alivePlayers) };
         }
         if (data.type === 'witch') {
-          return { type: 'witch', action: data.action || 'skip', target: data.target };
+          return { type: 'witch', action: data.action || 'skip', target: this.normalizeTarget(data.target, alivePlayers) };
         }
         if (data.type === 'target') {
           return { type: 'target', target: this.normalizeTarget(data.target, alivePlayers) };
         }
         if (data.type === 'skip') {
           return { type: 'skip' };
+        }
+        // 竞选：参与/不参与
+        if (data.type === 'campaign') {
+          return { type: 'campaign', run: data.run === true };
+        }
+        // 退水：退出/继续
+        if (data.type === 'withdraw') {
+          return { type: 'withdraw', withdraw: data.withdraw === true };
+        }
+        // 丘比特连线：两个目标
+        if (data.type === 'cupid') {
+          const targets = Array.isArray(data.targets)
+            ? data.targets.map(t => this.normalizeTarget(t, alivePlayers)).filter(Boolean)
+            : [];
+          return { type: 'cupid', targetIds: targets };
+        }
+        // 猎人开枪
+        if (data.type === 'shoot') {
+          return { type: 'shoot', target: this.normalizeTarget(data.target, alivePlayers) };
+        }
+        // 传警徽
+        if (data.type === 'pass_badge') {
+          return { type: 'pass_badge', target: this.normalizeTarget(data.target, alivePlayers) };
+        }
+        // 指定发言顺序
+        if (data.type === 'assignOrder') {
+          return { type: 'assignOrder', target: this.normalizeTarget(data.target, alivePlayers) };
         }
       }
     } catch (e) {

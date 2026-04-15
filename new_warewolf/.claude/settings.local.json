@@ -27,7 +27,10 @@
       "Bash(pkill -f \"node \")",
       "Bash(chmod +x:*)",
       "Bash(pkill -f \"npm run dev\")",
-      "Bash(pkill -f \"node.*dev\")"
+      "Bash(pkill -f \"node.*dev\")",
+      "Bash(pkill -f \"node cli_client\")",
+      "Bash(rm -f .werewolf_*.sock .werewolf_*.pid)",
+      "Bash(pkill -f \"cli_client.js\")"
     ]
   }
 }

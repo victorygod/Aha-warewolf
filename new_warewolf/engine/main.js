@@ -168,7 +168,7 @@ class GameEngine extends EventEmitter {
           werewolfTarget,
           healAvailable: extraData?.healAvailable ?? (player.state?.heal > 0),
           poisonAvailable: extraData?.poisonAvailable ?? (player.state?.poison > 0),
-          canSelfHeal: extraData?.canSelfHeal ?? (this.dayCount > 1),
+          canSelfHeal: extraData?.canSelfHeal ?? (this.nightCount === 1),
           poisonTargets
         };
       }
@@ -185,6 +185,10 @@ class GameEngine extends EventEmitter {
 
       case 'vote':
       case 'sheriff_vote': {
+        // 优先使用 extraData 中传入的 allowedTargets（如警长投票时的候选人）
+        if (extraData?.allowedTargets) {
+          return { ...baseData, allowedTargets: extraData.allowedTargets };
+        }
         const filter = filters?.vote;
         const allowedTargets = filter ? filter(this, player) : null;
         return { ...baseData, allowedTargets };
@@ -302,11 +306,24 @@ class GameEngine extends EventEmitter {
 
     // 使用 controller 获取投票结果（传递 actionType 以区分狼人投票和白天的投票）
     if (controller && typeof controller.getVoteResult === 'function') {
-      const result = await controller.getVoteResult(actionType, extraData);
-      const targetId = result?.targetId;
-      // 跳过无效投票（如没有可选目标时返回null）
-      if (targetId !== null && targetId !== undefined) {
-        this.vote(playerId, targetId, extraData);
+      // 循环直到玩家做出有效选择
+      while (true) {
+        const result = await controller.getVoteResult(actionType, extraData);
+        const targetId = result?.targetId;
+
+        // 跳过无效投票（如没有可选目标时返回null）
+        if (targetId === null || targetId === undefined) {
+          return;
+        }
+
+        // 尝试投票
+        const voteResult = this.vote(playerId, targetId, extraData);
+        if (voteResult.success) {
+          return;
+        }
+
+        // 投票失败，记录日志并重新请求
+        getLogger().warn(`${player.name} 投票失败: ${voteResult.error}，重新请求`);
       }
     }
   }
@@ -330,9 +347,11 @@ class GameEngine extends EventEmitter {
 
     // 使用 buildActionData 计算 allowedTargets，传递给 controller
     const actionData = this.buildActionData(playerId, actionType, extraData);
+    // 优先使用 extraData 中传入的 allowedTargets（如PK投票时指定），否则使用 buildActionData 计算的
+    const allowedTargets = extraData?.allowedTargets ?? actionData.allowedTargets;
     const enrichedExtraData = {
       ...extraData,
-      allowedTargets: actionData.allowedTargets,
+      allowedTargets,
       checkedIds: actionData.checkedIds,
       lastGuardTarget: actionData.lastGuardTarget,
       werewolfTarget: actionData.werewolfTarget,
@@ -421,11 +440,11 @@ class GameEngine extends EventEmitter {
   // 投票
   vote(voterId, targetId, extraData = {}) {
     const voter = this.players.find(p => p.id === voterId);
-    if (!voter) throw new Error('投票者不存在');
+    if (!voter) return { success: false, error: '投票者不存在' };
 
     // 检查是否限制了投票目标（如PK投票只能投给平票候选人）
     if (extraData?.allowedTargets && !extraData.allowedTargets.includes(Number(targetId))) {
-      throw new Error('只能投票给平票候选人');
+      return { success: false, error: '只能投票给候选人' };
     }
 
     // 确保键为字符串类型，保持一致性
@@ -433,11 +452,11 @@ class GameEngine extends EventEmitter {
 
     // 检查是否已投票
     if (this.votes[key] !== undefined) {
-      throw new Error('你已投票');
+      return { success: false, error: '你已投票' };
     }
 
     this.votes[key] = targetId;
-    // 投票结果在投票阶段结束后通过 message 统一广播
+    return { success: true };
   }
 
   // ========== 统一死亡处理 ==========
@@ -602,6 +621,7 @@ class GameEngine extends EventEmitter {
         players: this.players.map(p => ({
           id: p.id,
           name: p.name,
+          display: getPlayerDisplay(this.players, p),
           alive: p.alive,
           role: p.role,
           deathReason: p.deathReason,
@@ -684,8 +704,8 @@ class GameEngine extends EventEmitter {
     // 角色配置：村民、狼人、预言家、女巫、猎人、守卫、丘比特、白痴
     // 9人局：3狼、预言家、女巫、猎人、村民x3（共9人）
     const roles9 = ['werewolf', 'werewolf', 'werewolf', 'seer', 'witch', 'hunter', 'villager', 'villager', 'villager'];
-    // 12人局：4狼、预言家、女巫、猎人、守卫、丘比特、白痴、村民x4
-    const roles12 = ['werewolf', 'werewolf', 'werewolf', 'werewolf', 'seer', 'witch', 'hunter', 'guard', 'cupid', 'idiot', 'villager', 'villager'];
+    // 12人局：4狼、预言家、女巫、守卫、丘比特、白痴、村民x3
+    const roles12 = ['werewolf', 'werewolf', 'werewolf', 'werewolf', 'seer', 'witch', 'guard', 'cupid', 'idiot', 'villager', 'villager', 'villager'];
 
     let roles = count <= 9 ? roles9.slice(0, count) : roles12.slice(0, count);
     shuffle(roles);

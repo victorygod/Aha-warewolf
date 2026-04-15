@@ -15,7 +15,7 @@ const RULES = {
     allowRepeatGuard: false
   },
   witch: {
-    canSelfHeal: false,
+    canSelfHeal: true,  // 仅首夜可以自救
     canUseBothSameNight: true
   },
   hunter: {

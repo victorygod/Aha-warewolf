@@ -3,6 +3,19 @@
  * 用于测试或作为 LLMAgent 的降级方案
  */
 
+const { buildSystemPrompt, getPhasePrompt } = require('../prompts');
+const { formatMessageHistory } = require('../context');
+const { createLogger } = require('../../utils/logger');
+
+// 创建日志实例（延迟初始化，只使用backend.log）
+let backendLogger = null;
+function getLogger() {
+  if (!backendLogger) {
+    backendLogger = global.backendLogger || createLogger('backend.log');
+  }
+  return backendLogger;
+}
+
 class RandomAgent {
   constructor(playerId, game) {
     this.playerId = playerId;
@@ -15,6 +28,9 @@ class RandomAgent {
    * @returns {Object} action - 决策结果
    */
   async decide(context) {
+    // 记录上下文日志（不影响原有逻辑）
+    this.logContext(context);
+
     const { phase, alivePlayers, extraData, self } = context;
 
     switch (phase) {
@@ -250,6 +266,42 @@ class RandomAgent {
 
     const target = others[Math.floor(Math.random() * others.length)];
     return { type: 'target', target: String(target.id) };
+  }
+
+  // 记录决策上下文日志
+  logContext(context) {
+    const player = this.game.players.find(p => p.id === this.playerId);
+
+    // 构建系统提示词（与 LLM 一致）
+    const systemPrompt = buildSystemPrompt(player, this.game);
+
+    // 构建 getPhasePrompt 需要的 context
+    const promptContext = {
+      game: this.game,
+      alivePlayers: context.alivePlayers,
+      werewolfTarget: context.werewolfTarget,
+      witchPotion: {
+        heal: context.self?.witchHeal > 0,
+        poison: context.self?.witchPoison > 0
+      }
+    };
+
+    // 使用 prompts.js 中的 getPhasePrompt
+    const phasePrompt = getPhasePrompt(context.phase, promptContext);
+
+    // 使用 context.js 中的 formatMessageHistory
+    const historyText = formatMessageHistory(context.messages, this.game.players) || '无';
+
+    // 组合完整上下文
+    const fullContext = `
+${systemPrompt}
+
+${historyText}
+
+${phasePrompt}
+`;
+
+    getLogger().debug(fullContext);
   }
 }
 

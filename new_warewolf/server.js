@@ -29,16 +29,15 @@ const { GameEngine } = require('./engine/main');
 const { AIManager } = require('./ai/controller');
 const { getRandomProfiles, resetUsedNames } = require('./ai/prompts');
 const { createLogger, clearLogs } = require('./utils/logger');
+const { getPlayerDisplay } = require('./engine/utils');
 
 // 初始化日志（每次启动清空日志）
 clearLogs();
 const backendLogger = createLogger('backend.log');
-const agentLogger = createLogger('agent.log');
 const frontendLogger = createLogger('frontend.log');
 
 // 导出日志实例供其他模块使用
 global.backendLogger = backendLogger;
-global.agentLogger = agentLogger;
 global.frontendLogger = frontendLogger;
 
 const PORT = 3000;
@@ -136,7 +135,15 @@ function setupGameListeners() {
   // 监听玩家行动请求
   game.on('player:action', ({ playerId, data }) => {
     const player = game.players.find(p => p.id === playerId);
-    backendLogger.info(`请求 ${player?.name} 行动: ${data.action}`);
+    let targetsStr = '';
+    if (data.allowedTargets?.length > 0) {
+      const displays = data.allowedTargets.map(id => {
+        const p = game.players.find(x => x.id === id);
+        return p ? getPlayerDisplay(game.players, p) : `${id}号`;
+      });
+      targetsStr = ` | 可选: ${displays.join(', ')}`;
+    }
+    backendLogger.info(`请求 ${player?.name} 行动: ${data.action}${targetsStr}`);
 
     // 发送最新状态（已包含 pendingAction）
     const state = game.getState(playerId);
@@ -323,6 +330,7 @@ function handleAddAI(ws, msg) {
   game.players.push({
     id: aiPlayerId,
     name: profiles[0].name,
+    soul: profiles[0].soul,
     alive: true,
     isAI: true,
     role: null,
