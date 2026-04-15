@@ -7,7 +7,7 @@
  * - DEBUG: 工程调试信息（AI context、内部状态等）
  * - WARN/ERROR: 警告和错误
  *
- * 通过设置环境变量 DEBUG=1 开启 DEBUG 日志
+ * 通过 server.js --debug 参数开启 DEBUG 日志
  */
 
 const fs = require('fs');
@@ -19,8 +19,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 // logs 目录路径
 const LOGS_DIR = path.join(PROJECT_ROOT, 'logs');
 
-// DEBUG 模式开关（通过环境变量 DEBUG=1 开启）
-const DEBUG_MODE = process.env.DEBUG === '1';
+// DEBUG 模式通过 global.DEBUG_MODE 动态获取（由 server.js --debug 设置）
 
 // 确保 logs 目录存在
 function ensureLogsDir() {
@@ -67,8 +66,8 @@ function getRelativePath(fullPath) {
 
 // 写入日志（带文件路径和行号）
 function writeLog(filepath, level, msg) {
-  // DEBUG 日志需要开启 DEBUG 模式才写入
-  if (level === 'DEBUG' && !DEBUG_MODE) {
+  // DEBUG 日志需要开启 DEBUG 模式才写入（动态检查 global.DEBUG_MODE）
+  if (level === 'DEBUG' && !global.DEBUG_MODE) {
     return;
   }
 

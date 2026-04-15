@@ -26,8 +26,11 @@ const DAY_PHASES = ['day_announce', 'sheriff_campaign', 'sheriff_speech', 'sheri
  * @param {Array} players - 玩家列表（用于获取位置）
  * @returns {string} 格式化后的消息历史
  */
-function formatMessageHistory(messages, players) {
+function formatMessageHistory(messages, players, currentPlayer = null) {
   if (!messages || messages.length === 0) return '';
+
+  // 判断当前玩家是否是狼人
+  const isWolf = currentPlayer && currentPlayer.role && currentPlayer.role.camp === 'wolf';
 
   const lines = [];
   let nightCount = 0;
@@ -52,8 +55,8 @@ function formatMessageHistory(messages, players) {
           inWolfSection = false;
         }
 
-        // 狼人阶段需要子标题
-        if (phase === 'night_werewolf_discuss' && !inWolfSection) {
+        // 狼人阶段需要子标题（只有狼人玩家才显示）
+        if (phase === 'night_werewolf_discuss' && isWolf && !inWolfSection) {
           lines.push('[狼人]');
           inWolfSection = true;
         }
@@ -431,7 +434,7 @@ function buildFullContext(player, game, context) {
   const systemPrompt = buildSystemPrompt(player, game);
 
   // 消息历史
-  const historyText = formatMessageHistory(context.messages, game.players);
+  const historyText = formatMessageHistory(context.messages, game.players, player);
 
   // 阶段提示词
   const promptContext = {

@@ -30,7 +30,13 @@
       "Bash(pkill -f \"node.*dev\")",
       "Bash(pkill -f \"node cli_client\")",
       "Bash(rm -f .werewolf_*.sock .werewolf_*.pid)",
-      "Bash(pkill -f \"cli_client.js\")"
+      "Bash(pkill -f \"cli_client.js\")",
+      "Bash(pkill -f \"cli_client\")",
+      "Bash(pkill -f \"node server\")",
+      "Bash(xargs -r kill -9)",
+      "Bash(./stop_server.sh:*)",
+      "Bash(xargs -r kill echo \"已清理所有client进程\")",
+      "Bash(xargs -r kill -9 sleep 1 node server.js --debug)"
     ]
   }
 }

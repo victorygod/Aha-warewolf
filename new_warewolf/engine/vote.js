@@ -118,10 +118,28 @@ class VoteManager {
 
   // PK放逐投票
   async _resolveBanishPK(topVotes) {
+    // 排除已翻牌的白痴作为PK候选人
+    const validCandidates = topVotes.filter(c => !(c.role.id === 'idiot' && c.state?.revealed));
+
+    if (validCandidates.length === 0) {
+      this._broadcastTie(topVotes, 'PK候选人均为已翻牌白痴，无人出局');
+      this.game.votes = {};
+      return { done: true };
+    }
+
+    if (validCandidates.length === 1) {
+      // 只有一个有效候选人，直接放逐
+      this._broadcastTie(validCandidates, `PK仅剩1人，直接放逐`);
+      this.game.lastWordsPlayer = validCandidates[0];
+      this.game.deathQueue.push(validCandidates[0]);
+      this.game.votes = {};
+      return { done: true };
+    }
+
     this._broadcastTie(topVotes, '平票，进入PK');
 
-    // PK投票：所有存活玩家都能投票（包括PK候选人）
-    const pkCandidates = topVotes;
+    // PK投票：所有存活玩家都能投票
+    const pkCandidates = validCandidates;
     const pkVoters = this.game.players.filter(p => p.alive);
 
     if (pkVoters.length === 0) {
@@ -134,10 +152,20 @@ class VoteManager {
     // 清空投票，准备PK
     this.game.votes = {};
 
-    // 进行PK投票（不带权重）
-    const allowedTargets = pkCandidates.map(c => c.id);
+    // 进行PK投票（不带权重），排除已翻牌的白痴和投票者自己
+    const getPKAllowedTargets = (voterId) => {
+      // PK候选人中排除已翻牌的白痴
+      const validCandidates = pkCandidates.filter(c =>
+        !(c.role.id === 'idiot' && c.state?.revealed)
+      );
+      // 再排除投票者自己
+      return validCandidates
+        .filter(c => c.id !== voterId)
+        .map(c => c.id);
+    };
+
     await Promise.all(pkVoters.map(voter =>
-      this.game.callVote(voter.id, 'vote', { allowedTargets })
+      this.game.callVote(voter.id, 'vote', { allowedTargets: getPKAllowedTargets(voter.id) })
     ));
 
     // 计算PK结果

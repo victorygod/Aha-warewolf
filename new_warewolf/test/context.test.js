@@ -75,7 +75,9 @@ test('1. 夜晚阶段合并为 "第N夜"', () => {
     { type: 'wolf_vote_result', content: '狼人选择击杀 5号小华', voteDetails: [{ voter: '3号小刚', target: '5号小华' }] }
   ];
 
-  const result = formatMessageHistory(messages, mockPlayers);
+  // 模拟狼人玩家
+  const wolfPlayer = mockPlayers.find(p => p.id === 3);
+  const result = formatMessageHistory(messages, mockPlayers, wolfPlayer);
 
   // 只出现一次 "第1夜"
   const nightCount = (result.match(/第1夜/g) || []).length;
@@ -86,7 +88,7 @@ test('1. 夜晚阶段合并为 "第N夜"', () => {
   assert(!result.includes('守卫守护'), '不应出现守卫守护');
   assert(!result.includes('狼人投票'), '不应出现狼人投票');
 
-  // 应该有 [狼人] 子标题
+  // 应该有 [狼人] 子标题（狼人玩家才显示）
   assert(result.includes('[狼人]'), '应该有 [狼人] 子标题');
 });
 
@@ -352,14 +354,16 @@ test('21. 完整夜晚流程', () => {
     { type: 'action', content: '你查验了 3号小刚，TA是狼人', playerId: 1, metadata: { targetId: 3, result: 'wolf' } }
   ];
 
-  const result = formatMessageHistory(messages, mockPlayers);
+  // 模拟狼人玩家，传入 currentPlayer
+  const wolfPlayer = mockPlayers.find(p => p.id === 3);
+  const result = formatMessageHistory(messages, mockPlayers, wolfPlayer);
 
   // 验证阶段合并
   const nightCount = (result.match(/第1夜/g) || []).length;
   assert.strictEqual(nightCount, 1, '应该只有一个第1夜');
 
-  // 验证子标题
-  assert(result.includes('[狼人]'), '应该有 [狼人] 子标题');
+  // 验证子标题（狼人玩家才显示）
+  assert(result.includes('[狼人]'), '狼人玩家应该有 [狼人] 子标题');
 
   // 验证内容
   assert(result.includes('3号小刚:刀5号吧'), '狼人发言');

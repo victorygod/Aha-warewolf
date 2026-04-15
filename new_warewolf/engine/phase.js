@@ -321,9 +321,9 @@ const PHASE_FLOW = [
     execute: async (game) => {
       const voters = game.players.filter(p => p.alive);
 
-      // 计算白天投票的可选目标（排除自己）
+      // 计算白天投票的可选目标（排除自己、排除已翻牌的白痴）
       const getAllowedTargets = (playerId) => game.players
-        .filter(p => p.alive && p.id !== playerId)
+        .filter(p => p.alive && p.id !== playerId && !(p.role.id === 'idiot' && p.state?.revealed))
         .map(p => p.id);
 
       // 并行让所有存活玩家投票

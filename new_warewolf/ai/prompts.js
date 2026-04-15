@@ -54,11 +54,27 @@ ${SPECIAL_RULES}`;
 // 阶段提示词（统一要求 JSON 格式返回）
 const PHASE_PROMPTS = {
   night_werewolf_discuss: () => '【狼人讨论】轮到你发言了，请与同伴讨论今晚的目标。以JSON格式返回: {"type": "speech", "content": "你说的话"}',
-  night_werewolf_vote: (aliveList) => `【狼人投票】存活玩家：\n${aliveList}\n请选择今晚要击杀的玩家。以JSON格式返回: {"type": "vote", "target": 位置编号} 或 {"type": "skip"} 弃权`,
-  seer: (aliveList) => `【预言家】存活玩家：\n${aliveList}\n请选择要查验的玩家。以JSON格式返回: {"type": "target", "target": 位置编号}`,
-  guard: (aliveList) => `【守卫】存活玩家：\n${aliveList}\n请选择要守护的玩家。以JSON格式返回: {"type": "target", "target": 位置编号}`,
+  night_werewolf_vote: (aliveList) => `【狼人投票】可选玩家：\n${aliveList}\n请选择今晚要击杀的玩家。以JSON格式返回: {"type": "vote", "target": 位置编号} 或 {"type": "skip"} 弃权`,
+  seer: (aliveList) => `【预言家】可选玩家：\n${aliveList}\n请选择要查验的玩家。以JSON格式返回: {"type": "target", "target": 位置编号}`,
+  guard: (aliveList) => `【守卫】可选玩家：\n${aliveList}\n请选择要守护的玩家。以JSON格式返回: {"type": "target", "target": 位置编号}`,
   day_discuss: () => '【白天发言】轮到你发言了，请分析局势，简要发言。以JSON格式返回: {"type": "speech", "content": "你说的话"}',
-  day_vote: (aliveList) => `【白天投票】存活玩家：\n${aliveList}\n请选择要放逐的玩家。以JSON格式返回: {"type": "vote", "target": 位置编号} 或 {"type": "skip"} 弃权`,
+  day_vote: (aliveList) => {
+    // day_vote 直接使用 aliveList（所有存活玩家，排除自己由前端/AI处理）
+    return `【白天投票】可选玩家：\n${aliveList}\n请选择要放逐的玩家。以JSON格式返回: {"type": "vote", "target": 位置编号} 或 {"type": "skip"} 弃权`;
+  },
+  // 放逐后处理（PK投票等）
+  post_vote: (aliveList, context) => {
+    const allowedTargets = context?.extraData?.allowedTargets;
+    let targetList = aliveList;
+    if (allowedTargets && allowedTargets.length > 0) {
+      const candidates = context.game.players.filter(p => allowedTargets.includes(p.id));
+      targetList = candidates.map(p => {
+        const pos = context.game.players.findIndex(gp => gp.id === p.id) + 1;
+        return `${pos}号: ${p.name}`;
+      }).join('\n');
+    }
+    return `【PK投票】可选玩家：\n${targetList}\n请选择要放逐的玩家。以JSON格式返回: {"type": "vote", "target": 位置编号} 或 {"type": "skip"} 弃权`;
+  },
   last_words: () => '【遗言】你即将死亡，请发表遗言。以JSON格式返回: {"type": "speech", "content": "你的遗言"}',
   witch: (aliveList, context) => {
     // werewolfTarget 可能是玩家ID（数字）或玩家对象，需要兼容处理
@@ -68,7 +84,7 @@ const PHASE_PROMPTS = {
     const killedPos = killedPlayer ? context.game.players.findIndex(p => p.id === targetId) + 1 : '';
     const healAvailable = context.witchPotion?.heal ? '可用' : '已用完';
     const poisonAvailable = context.witchPotion?.poison ? '可用' : '已用完';
-    return `【女巫】存活玩家：\n${aliveList}\n今晚 ${killedPos}号${killedName} 被狼人杀害。解药：${healAvailable}，毒药：${poisonAvailable}。以JSON格式返回: {"type": "witch", "action": "heal/poison/skip", "target": 编号(毒杀时需要)}`;
+    return `【女巫】可选玩家：\n${aliveList}\n今晚 ${killedPos}号${killedName} 被狼人杀害。解药：${healAvailable}，毒药：${poisonAvailable}。以JSON格式返回: {"type": "witch", "action": "heal/poison/skip", "target": 编号(毒杀时需要)}`;
   },
   // 警长竞选相关
   campaign: () => '【警长竞选】是否参与警长竞选？以JSON格式返回: {"type": "campaign", "run": true/false}',
@@ -76,12 +92,12 @@ const PHASE_PROMPTS = {
   sheriff_speech: () => '【警长竞选发言】轮到你发言了，请说明为什么应该选你当警长。以JSON格式返回: {"type": "speech", "content": "你说的话"}',
   sheriff_vote: (aliveList) => `【警长投票】候选人列表见消息历史。\n请选择要投票的候选人。以JSON格式返回: {"type": "vote", "target": 位置编号} 或 {"type": "skip"} 弃权`,
   // 技能相关
-  cupid: (aliveList) => `【丘比特】存活玩家：\n${aliveList}\n请选择两名玩家连接为情侣。以JSON格式返回: {"type": "cupid", "targets": [位置编号1, 位置编号2]}`,
-  shoot: (aliveList) => `【猎人开枪】存活玩家：\n${aliveList}\n你已死亡，可以选择开枪带走一名玩家。以JSON格式返回: {"type": "shoot", "target": 位置编号} 或 {"type": "skip"} 放弃开枪`,
-  pass_badge: (aliveList) => `【传警徽】存活玩家：\n${aliveList}\n你是警长，已死亡。请选择将警徽传给谁。以JSON格式返回: {"type": "pass_badge", "target": 位置编号} 或 {"type": "skip"} 不传`,
-  assignOrder: (aliveList) => `【指定发言顺序】存活玩家：\n${aliveList}\n你是警长，请指定从哪位玩家开始发言。以JSON格式返回: {"type": "assignOrder", "target": 位置编号}`,
+  cupid: (aliveList) => `【丘比特】可选玩家：\n${aliveList}\n请选择两名玩家连接为情侣。以JSON格式返回: {"type": "cupid", "targets": [位置编号1, 位置编号2]}`,
+  shoot: (aliveList) => `【猎人开枪】可选玩家：\n${aliveList}\n你已死亡，可以选择开枪带走一名玩家。以JSON格式返回: {"type": "shoot", "target": 位置编号} 或 {"type": "skip"} 放弃开枪`,
+  pass_badge: (aliveList) => `【传警徽】可选玩家：\n${aliveList}\n你是警长，已死亡。请选择将警徽传给谁。以JSON格式返回: {"type": "pass_badge", "target": 位置编号} 或 {"type": "skip"} 不传`,
+  assignOrder: (aliveList) => `【指定发言顺序】可选玩家：\n${aliveList}\n你是警长，请指定从哪位玩家开始发言。以JSON格式返回: {"type": "assignOrder", "target": 位置编号}`,
   // 选择目标
-  choose_target: (aliveList) => `【选择目标】存活玩家：\n${aliveList}\n请选择目标玩家。以JSON格式返回: {"type": "target", "target": 位置编号}`
+  choose_target: (aliveList) => `【选择目标】可选玩家：\n${aliveList}\n请选择目标玩家。以JSON格式返回: {"type": "target", "target": 位置编号}`
 };
 
 // 获取阶段提示词

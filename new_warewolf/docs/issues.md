@@ -171,7 +171,7 @@ state.self = {
   - **INFO**：玩家行为（发言、投票、技能使用）、阶段变更
   - **DEBUG**：工程调试信息（AI context、内部状态等）
   - **WARN/ERROR**：警告和错误
-- ✅ 通过 `DEBUG=1 node server.js` 开启 DEBUG 日志
+- ✅ 通过 `node server.js --debug` 开启 DEBUG 日志
 
 ---
 
