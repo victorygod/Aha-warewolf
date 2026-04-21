@@ -15,6 +15,13 @@
       <div id="my-role" class="hidden"></div>
     </header>
 
+    <!-- 板子信息面板 -->
+    <div id="preset-panel" class="hidden">
+      <div id="preset-panel-name"></div>
+      <div id="preset-panel-roles"></div>
+      <div id="preset-panel-rules"></div>
+    </div>
+
     <!-- 玩家列表 -->
     <section id="players-section">
       <div id="players-grid"></div>
@@ -44,11 +51,24 @@
         <input type="text" id="player-name" placeholder="输入名字">
       </div>
       <div class="form-group">
-        <label>游戏人数：</label>
-        <select id="player-count">
-          <option value="9">9人局</option>
-          <option value="12">12人局</option>
-          <option value="16">16人局</option>
+        <label>选择板子：</label>
+        <div id="preset-list"></div>
+        <div id="preset-locked" class="hidden">
+          <span id="preset-locked-name"></span>
+        </div>
+      </div>
+      <div id="debug-role-group" class="form-group hidden">
+        <label>Debug 模式 - 选择身份：</label>
+        <select id="debug-role-select">
+          <option value="">随机</option>
+          <option value="werewolf">狼人</option>
+          <option value="seer">预言家</option>
+          <option value="witch">女巫</option>
+          <option value="guard">守卫</option>
+          <option value="hunter">猎人</option>
+          <option value="villager">村民</option>
+          <option value="idiot">白痴</option>
+          <option value="cupid">丘比特</option>
         </select>
       </div>
       <div class="buttons">
@@ -57,6 +77,8 @@
     </div>
   </div>
 
+  <script src="logger.js"></script>
+  <script src="controller.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

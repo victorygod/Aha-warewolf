@@ -1,15 +1,18 @@
 /**
- * 狼人杀游戏前端逻辑
+ * 前端 UI 渲染 - WebSocket 版本
  */
 
-// 状态
-let playerName = null;
-let playerId = null;
-let gameState = null;
-let eventSource = null;
-let displayedMessageIds = new Set(); // 已显示的消息ID
-let isFirstStateUpdate = true; // 首次状态更新标志
-let debugMode = false;
+// 角色名称
+const ROLE_NAMES = {
+  werewolf: '狼人',
+  seer: '预言家',
+  witch: '女巫',
+  guard: '守卫',
+  hunter: '猎人',
+  villager: '村民',
+  idiot: '白痴',
+  cupid: '丘比特'
+};
 
 // DOM 元素
 const elements = {
@@ -26,326 +29,691 @@ const elements = {
   skillButtons: document.getElementById('skill-buttons'),
   setupPanel: document.getElementById('setup-panel'),
   playerNameInput: document.getElementById('player-name'),
-  playerCountSelect: document.getElementById('player-count'),
-  readyBtn: document.getElementById('ready-btn')
+  presetList: document.getElementById('preset-list'),
+  presetLocked: document.getElementById('preset-locked'),
+  presetLockedName: document.getElementById('preset-locked-name'),
+  readyBtn: document.getElementById('ready-btn'),
+  presetPanel: document.getElementById('preset-panel'),
+  presetPanelName: document.getElementById('preset-panel-name'),
+  presetPanelRoles: document.getElementById('preset-panel-roles'),
+  presetPanelRules: document.getElementById('preset-panel-rules')
 };
 
-// 角色描述
-const ROLE_DESCRIPTIONS = {
-  werewolf: '你是狼人。夜晚与同伴一起选择击杀目标，白天隐藏身份。',
-  seer: '你是预言家。每晚可以查验一名玩家的身份。',
-  witch: '你是女巫。拥有一瓶解药和一瓶毒药。',
-  guard: '你是守卫。每晚可以守护一名玩家免受狼人攻击。',
-  hunter: '你是猎人。死亡时可以开枪带走一名玩家。',
-  villager: '你是村民。没有特殊技能，但你的投票很重要。'
-};
+// 当前行动请求
+let currentAction = null;
 
-const ROLE_NAMES = {
-  werewolf: '狼人',
-  seer: '预言家',
-  witch: '女巫',
-  guard: '守卫',
-  hunter: '猎人',
-  villager: '村民'
-};
+// 板子列表
+let presets = {};
+let selectedPresetId = null;
+let presetPanelOpen = false;
+
+// 服务器配置（从API获取）
+let SERVER_DEBUG_MODE = false;
 
 // 初始化
 async function init() {
-  console.log('初始化狼人杀游戏...');
-
-  // 获取调试模式状态
-  try {
-    const debugRes = await fetch('/api/debug');
-    const debugData = await debugRes.json();
-    debugMode = debugData.debugMode;
-    console.log('调试模式:', debugMode);
-    if (debugMode) {
-      showRoleSelector();
-    }
-  } catch (e) {
-    console.error('获取调试模式失败:', e);
+  if (window.frontendLogger) {
+    window.frontendLogger.debug('初始化狼人杀游戏...');
   }
 
-  // 绑定事件
   elements.readyBtn.addEventListener('click', ready);
   elements.sendBtn.addEventListener('click', sendSpeech);
   elements.speechInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendSpeech();
   });
 
-  // 连接 SSE
-  connectSSE();
+  // 头部点击展开板子信息
+  document.getElementById('header').addEventListener('click', togglePresetPanel);
+
+  // 点击面板外区域关闭面板
+  document.addEventListener('click', (e) => {
+    if (presetPanelOpen && !document.getElementById('header').contains(e.target) && !elements.presetPanel.contains(e.target)) {
+      presetPanelOpen = false;
+      elements.presetPanel.classList.remove('visible');
+      elements.presetPanel.classList.add('hidden');
+    }
+  });
+
+  // 设置状态变更回调
+  controller.onStateChange = updateUI;
+
+  // 设置行动请求回调
+  controller.onActionRequired = handleActionRequired;
+
+  // 加载板子列表
+  await loadPresets();
+
+  // 初始化 UI（确保 debug-role-group 等组件初始状态正确）
+  updateUI();
 
   // 检查 URL 是否有名字参数
   const urlParams = new URLSearchParams(window.location.search);
   const nameFromUrl = urlParams.get('name');
   if (nameFromUrl) {
     elements.playerNameInput.value = nameFromUrl;
-    // 自动尝试进入游戏
     autoJoin(nameFromUrl);
   }
 }
 
-// 显示角色选择器（调试模式）
-function showRoleSelector() {
-  // 防止重复添加
-  if (document.getElementById('player-role')) return;
-
-  const roleSelector = document.createElement('div');
-  roleSelector.className = 'form-group';
-  roleSelector.innerHTML = `
-    <label>选择角色（调试）：</label>
-    <select id="player-role">
-      <option value="">随机</option>
-      <option value="werewolf">狼人</option>
-      <option value="seer">预言家</option>
-      <option value="witch">女巫</option>
-      <option value="guard">守卫</option>
-      <option value="hunter">猎人</option>
-      <option value="villager">村民</option>
-    </select>
-  `;
-  elements.aiCountInput.parentElement.after(roleSelector);
-}
-
-// 自动加入（刷新时）
-async function autoJoin(name) {
+// 加载板子列表
+async function loadPresets() {
   try {
-    // 先获取当前游戏状态（传递玩家名字以获取角色信息）
-    const stateRes = await fetch(`/api/state?name=${encodeURIComponent(name)}`);
-    const state = await stateRes.json();
-
-    // 检查是否有同名玩家
-    const existingPlayer = state.players?.find(p => p.name === name && !p.isAI);
-
-    if (existingPlayer) {
-      // 找到了，直接进入游戏
-      playerName = name;
-      playerId = existingPlayer.id;
-      gameState = state;
-
-      // 更新 SSE 连接
-      connectSSE();
-
-      // 隐藏设置面板
-      elements.setupPanel.classList.add('hidden');
-      updateUI();
-      console.log('自动进入游戏成功, 角色:', existingPlayer.role);
-    } else {
-      // 没找到玩家，显示设置面板
-      if (debugMode) {
-        showRoleSelector();
-      }
+    const res = await fetch('/api/presets');
+    const data = await res.json();
+    SERVER_DEBUG_MODE = data.debugMode || false;
+    presets = data.presets || {};
+    renderPresetList();
+    // 默认选中第一个板子并更新 debug-role-select
+    const firstPresetId = Object.keys(presets)[0];
+    if (firstPresetId) {
+      selectedPresetId = firstPresetId;
+      updateDebugRoleSelect(presets[firstPresetId]?.roles);
+    }
+    // 根据 debug 模式显示/隐藏 debug 组件
+    const debugRoleGroup = document.getElementById('debug-role-group');
+    if (debugRoleGroup && SERVER_DEBUG_MODE) {
+      debugRoleGroup.classList.remove('hidden');
     }
   } catch (e) {
-    console.error('自动加入失败:', e);
-  }
-}
-
-// 获取当前玩家（通过名字匹配）
-function getMyPlayer() {
-  if (!gameState || !playerName) return null;
-  return gameState.players.find(p => p.name === playerName && !p.isAI);
-}
-
-// 获取玩家位置（1-based）
-function getPlayerPosition(playerId) {
-  if (!gameState || !gameState.players) return 0;
-  const index = gameState.players.findIndex(p => p.id === playerId);
-  return index + 1;
-}
-
-// 连接 SSE
-function connectSSE() {
-  if (eventSource) {
-    eventSource.close();
-    eventSource = null;
-  }
-
-  console.log('连接 SSE...');
-  // 传递玩家名字给服务器，以便服务器返回正确的角色信息
-  const url = playerName ? `/events?name=${encodeURIComponent(playerName)}` : '/events';
-  eventSource = new EventSource(url);
-
-  eventSource.addEventListener('state_update', (e) => {
-    console.log('SSE 原始数据:', e.data);
-    try {
-      const data = JSON.parse(e.data);
-      const previousPhase = gameState ? gameState.phase : null;
-      gameState = data;
-      console.log('收到状态更新:', data.phase, '我的角色:', data.players?.find(p => p.name === playerName)?.role);
-
-      // 检测游戏开始（从waiting变为其他阶段），重新获取完整状态
-      if (previousPhase === 'waiting' && data.phase !== 'waiting') {
-        showOpeningMessage();
-        // 重新请求完整状态，确保角色信息正确
-        fetchFullState();
-      }
-
-      // 首次状态更新时，清空消息区域并重新加载所有历史消息
-      if (isFirstStateUpdate) {
-        isFirstStateUpdate = false;
-        elements.messages.innerHTML = ''; // 清空现有消息
-        displayedMessageIds.clear(); // 清空已显示ID
-
-        // 显示所有历史消息
-        if (data.messages && data.messages.length > 0) {
-          data.messages.forEach(msg => {
-            displayedMessageIds.add(msg.id);
-            displayMessage(msg);
-          });
-        }
-      } else {
-        // 后续状态更新，只显示新消息
-        if (data.messages && data.messages.length > 0) {
-          data.messages.forEach(msg => {
-            if (!displayedMessageIds.has(msg.id)) {
-              displayedMessageIds.add(msg.id);
-              displayMessage(msg);
-            }
-          });
-        }
-      }
-
-      updateUI();
-    } catch (err) {
-      console.error('SSE 数据解析错误:', err, e.data);
+    if (window.frontendLogger) {
+      window.frontendLogger.error('加载板子列表失败: ' + e.message);
     }
-  });
-
-  eventSource.addEventListener('ai_thinking', (e) => {
-    const data = JSON.parse(e.data);
-    addMessage(`${data.playerName} 正在思考...`, 'ai-thinking');
-  });
-
-  eventSource.onerror = (e) => {
-    console.error('SSE 连接错误:', e);
-    // 延迟重连，避免频繁重连
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
-    setTimeout(connectSSE, 3000);
-  };
-
-  eventSource.onopen = () => {
-    console.log('SSE 连接成功');
-  };
+  }
 }
 
-// 显示错误提示
-function showError(message) {
-  // 移除已有的错误提示
-  const existingError = document.querySelector('.error-toast');
-  if (existingError) {
-    existingError.remove();
+// 渲染板子列表
+function renderPresetList() {
+  if (!elements.presetList) return;
+  elements.presetList.innerHTML = '';
+  for (const [id, preset] of Object.entries(presets)) {
+    const div = document.createElement('div');
+    div.className = 'preset-option' + (selectedPresetId === id ? ' selected' : '');
+    div.dataset.presetId = id;
+
+    const roleSummary = summarizeRoles(preset.roles);
+    const rulesHtml = preset.ruleDescriptions.map(r => `<div class="preset-rule">· ${r}</div>`).join('');
+
+    div.innerHTML = `
+      <div class="preset-name">${preset.name}</div>
+      <div class="preset-desc">${preset.description}</div>
+      <div class="preset-roles">${roleSummary}</div>
+      <div class="preset-rules">${rulesHtml}</div>
+    `;
+    div.addEventListener('click', () => {
+      selectedPresetId = id;
+      renderPresetList();
+      updateDebugRoleSelect(presets[id]?.roles);
+    });
+    elements.presetList.appendChild(div);
   }
+}
 
-  const toast = document.createElement('div');
-  toast.className = 'error-toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
+// 更新 Debug 角色选择下拉框
+function updateDebugRoleSelect(roles) {
+  const debugRoleSelect = document.getElementById('debug-role-select');
+  if (!debugRoleSelect || !roles) return;
 
-  setTimeout(() => {
-    toast.remove();
-  }, 3000);
+  const uniqueRoles = [...new Set(roles)];
+  let optionsHtml = '<option value="">随机</option>';
+  for (const role of uniqueRoles) {
+    const roleName = ROLE_NAMES[role] || role;
+    optionsHtml += `<option value="${role}">${roleName}</option>`;
+  }
+  debugRoleSelect.innerHTML = optionsHtml;
+}
+
+// 角色概览文本
+function summarizeRoles(roles) {
+  const counts = {};
+  const ROLE_NAMES = { werewolf: '狼人', seer: '预言家', witch: '女巫', hunter: '猎人', guard: '守卫', villager: '村民', idiot: '白痴', cupid: '丘比特' };
+  for (const r of roles) {
+    counts[r] = (counts[r] || 0) + 1;
+  }
+  return Object.entries(counts).map(([id, n]) => `${ROLE_NAMES[id] || id}${n > 1 ? n : ''}`).join(' / ');
+}
+
+// 锁定板子显示
+function showPresetLocked(presetId) {
+  const preset = presets[presetId];
+  if (!preset) return;
+  if (elements.presetList) elements.presetList.classList.add('hidden');
+  if (elements.presetLocked) {
+    elements.presetLocked.classList.remove('hidden');
+    const roleSummary = summarizeRoles(preset.roles);
+    const rulesHtml = (preset.ruleDescriptions || []).map(r => `<div class="preset-rule">· ${r}</div>`).join('');
+    elements.presetLockedName.innerHTML = `板子已锁定: <strong>${preset.name}</strong><div class="preset-roles" style="margin-top:6px">${roleSummary}</div>${rulesHtml}`;
+  }
+}
+
+// 自动加入
+async function autoJoin(name) {
+  const urlParams = new URLSearchParams(window.location.search);
+  const presetFromUrl = urlParams.get('preset') || selectedPresetId || '9-standard';
+  const result = await controller.join(name, presetFromUrl);
+  if (result.success) {
+    elements.setupPanel.classList.add('hidden');
+    updateUI();
+  }
+}
+
+// 切换板子信息面板
+function togglePresetPanel() {
+  const state = controller.getState();
+  if (!state?.preset) return;
+
+  presetPanelOpen = !presetPanelOpen;
+
+  if (presetPanelOpen) {
+    renderPresetPanel(state.preset);
+    elements.presetPanel.classList.add('visible');
+    elements.presetPanel.classList.remove('hidden');
+  } else {
+    elements.presetPanel.classList.remove('visible');
+    elements.presetPanel.classList.add('hidden');
+  }
+}
+
+// 渲染板子信息面板
+function renderPresetPanel(preset) {
+  if (!elements.presetPanelName) return;
+  const roleSummary = summarizeRoles(preset.roles);
+  const rulesHtml = (preset.ruleDescriptions || []).map(r => `<div>· ${r}</div>`).join('');
+
+  elements.presetPanelName.textContent = preset.name;
+  elements.presetPanelRoles.textContent = roleSummary;
+  elements.presetPanelRules.innerHTML = rulesHtml;
 }
 
 // 准备
 async function ready() {
   const name = elements.playerNameInput.value.trim() || `玩家${Date.now() % 1000}`;
-  const count = parseInt(elements.playerCountSelect.value);
-  const roleSelect = document.getElementById('player-role');
-  const playerRole = roleSelect ? roleSelect.value : null;
+  const presetId = selectedPresetId || '9-standard';
 
-  try {
-    const res = await fetch('/api/ready', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName: name, playerCount: count, playerRole })
-    });
+  // 获取 Debug 模式选择的角色
+  const debugRoleSelect = document.getElementById('debug-role-select');
+  const debugRole = debugRoleSelect ? debugRoleSelect.value : null;
 
-    const data = await res.json();
-    if (!data.success) {
-      showError(data.error);
-      return;
-    }
-
-    playerName = name;
-    playerId = data.playerId;
-
-    // 更新 URL
-    const url = new URL(window.location);
-    url.searchParams.set('name', name);
-    window.history.replaceState({}, '', url);
-
-    // 重新建立 SSE 连接
-    connectSSE();
-
-    // 更新状态
-    gameState = data.state;
-
-    // 准备后直接进入房间
-    elements.setupPanel.classList.add('hidden');
-
-    // 如果游戏开始了，显示开场白并获取完整状态
-    if (data.gameStarted) {
-      showOpeningMessage();
-      fetchFullState();
-    }
-
-    updateUI();
-  } catch (e) {
-    console.error('准备失败:', e);
-    showError('操作失败，请重试');
+  const result = await controller.join(name, presetId, debugRole || null);
+  if (result.error) {
+    showError(result.error);
+    return;
   }
+
+  // 更新 URL
+  const url = new URL(window.location);
+  url.searchParams.set('name', name);
+  url.searchParams.set('preset', presetId);
+  window.history.replaceState({}, '', url);
+
+  elements.setupPanel.classList.add('hidden');
+
+  if (result.gameStarted) {
+    showOpeningMessage();
+  }
+
+  updateUI();
 }
 
-// 添加 AI
-async function addAI() {
-  try {
-    const res = await fetch('/api/add-ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ count: 1 })
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      gameState = data.state;
-      updateUI();
-      // 如果游戏开始了，显示开场白并获取完整状态
-      if (data.gameStarted) {
-        showOpeningMessage();
-        fetchFullState();
-      }
-    } else {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('添加AI失败:', e);
-    showError('添加AI失败，请重试');
-  }
-}
-
-// 显示开场白（只在前端显示，不记录到后端）
+// 显示开场白
 function showOpeningMessage() {
   addPhaseDivider('游戏开始');
   addMessage('天黑请闭眼。', 'system opening');
 }
 
-// 获取完整游戏状态（确保角色信息正确）
-async function fetchFullState() {
-  if (!playerName) return;
-  try {
-    const res = await fetch(`/api/state?name=${encodeURIComponent(playerName)}`);
-    const state = await res.json();
-    gameState = state;
-    updateUI();
-    console.log('获取完整状态成功，角色:', state.players?.find(p => p.name === playerName)?.role);
-  } catch (e) {
-    console.error('获取状态失败:', e);
+// 处理行动请求
+function handleActionRequired(msg) {
+  currentAction = msg;
+  const d = msg.data;  // 实际数据在 msg.data 里
+  if (window.frontendLogger) {
+    window.frontendLogger.debug(`[UI] 行动请求: ${d.action}, requestId: ${d.requestId}, allowedTargets: ${JSON.stringify(d.allowedTargets)}`);
   }
+
+  // 根据行动类型显示不同的 UI
+  const state = controller.getState();
+  const myPlayer = controller.getMyPlayer();
+
+  if (window.frontendLogger) {
+    window.frontendLogger.debug(`[UI] myPlayer: ${myPlayer ? myPlayer.name + '(id=' + myPlayer.id + ',isAI=' + myPlayer.isAI + ')' : 'null'}, playerName: ${controller.playerName}, players: ${state?.players?.map(p => p.name + '(id=' + p.id + ',isAI=' + p.isAI + ')').join(', ')}`);
+  }
+
+  if (!myPlayer) return;
+
+  // 清空之前的按钮
+  elements.voteButtons.innerHTML = '';
+  elements.skillButtons.innerHTML = '';
+
+  switch (d.action) {
+    case 'speak':
+    case 'last_words':
+      elements.actionInput.classList.add('active');
+      elements.actionPrompt.textContent = '轮到你发言了';
+      break;
+
+    case 'vote':
+    case 'wolf_vote':
+    case 'sheriff_vote':
+      elements.voteButtons.classList.add('active');
+      elements.actionPrompt.textContent = d.action === 'wolf_vote' ? '请选择刀人目标' : (d.action === 'sheriff_vote' ? '请投票选警长' : '请投票');
+      if (window.frontendLogger) {
+        window.frontendLogger.debug(`[Vote] 可选目标: ${JSON.stringify(d.allowedTargets)}`);
+      }
+      renderVoteButtons(state, myPlayer, d.allowedTargets, d.action);
+      break;
+
+    case 'guard':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '请选择守护目标';
+      // 守卫不能连守同一人，传入上一晚的目标
+      const guardDisabledIds = d.lastGuardTarget ? [d.lastGuardTarget] : [];
+      // 使用后端传来的 allowedTargets（包含自己）
+      renderTargetButtons(state, myPlayer, 1, { allowedTargets: d.allowedTargets, disabledIds: guardDisabledIds });
+      break;
+
+    case 'witch':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '女巫行动';
+      renderWitchButtons(state, myPlayer, d);
+      break;
+
+    case 'campaign':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '是否竞选警长？';
+      renderCampaignButtons();
+      break;
+
+    case 'withdraw':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '是否退水？';
+      renderWithdrawButtons();
+      break;
+
+    case 'choose_speaker_order':
+    case 'assignOrder':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '请指定发言顺序';
+      renderSpeakerOrderUI(state);
+      break;
+
+    case 'shoot':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '猎人请选择开枪目标';
+      renderTargetButtons(state, myPlayer, 1);
+      break;
+
+    case 'cupid':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '请选择连接为情侣的两名玩家';
+      renderTargetButtons(state, myPlayer, 2);
+      break;
+
+    case 'seer':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '请选择查验目标';
+      // 从 state 计算 allowedTargets：排除自己、已查验的、死亡的
+      const checkedIds = (state.self?.seerChecks || []).map(c => c.targetId);
+      const allowedTargets = state.players
+        .filter(p => p.id !== myPlayer.id && p.alive && !checkedIds.includes(p.id))
+        .map(p => p.id);
+      renderTargetButtons(state, myPlayer, 1, { allowedTargets });
+      break;
+
+    case 'passBadge':
+      elements.skillButtons.classList.add('active');
+      elements.actionPrompt.textContent = '警长请选择传警徽对象（或选择不传）';
+      // 使用后端传来的 allowedTargets
+      const passBadgeTargets = d.allowedTargets
+        ? state.players.filter(p => d.allowedTargets.includes(p.id))
+        : state.players.filter(p => p.alive && p.id !== myPlayer.id);
+      renderPassBadgeButtons(passBadgeTargets);
+      break;
+
+    default:
+      if (window.frontendLogger) {
+        window.frontendLogger.warn(`[UI] 未知行动类型: ${d.action}`);
+      }
+  }
+}
+
+// 渲染投票按钮
+function renderVoteButtons(state, myPlayer, allowedTargets, actionType) {
+  // 如果限制了投票目标，只显示允许的目标
+  const candidates = allowedTargets
+    ? state.players.filter(p => p.alive && allowedTargets.includes(p.id))
+    : state.players.filter(p => p.alive && p.id !== myPlayer.id);
+
+  // 判断是否是狼人投票，以及自己是不是狼人
+  const isWolfVote = actionType === 'wolf_vote';
+  // 优先从 state.self 获取，如果没有则从 players 数组中查找
+  let myCamp = state.self?.role?.camp;
+  if (!myCamp && myPlayer?.id) {
+    const me = state.players.find(p => p.id === myPlayer.id);
+    myCamp = me?.role?.camp;
+  }
+  const isWolf = myCamp === 'wolf';
+
+  candidates.forEach(player => {
+    const pos = controller.getPlayerPosition(player.id);
+    const btn = document.createElement('button');
+    btn.className = 'vote-btn';
+
+    // 狼人投票时，如果是狼人队友显示红色
+    const isTeammate = player.role?.camp === 'wolf';
+    if (isWolfVote && isWolf && isTeammate) {
+      btn.classList.add('wolf-target');
+      btn.title = '狼人队友';
+    }
+
+    btn.textContent = `${pos}号 ${player.name}`;
+    btn.addEventListener('click', () => {
+      controller.respond(currentAction.data.requestId, { targetId: player.id });
+      clearActionUI();
+    });
+    elements.voteButtons.appendChild(btn);
+  });
+
+  // 弃权按钮
+  const abstainBtn = document.createElement('button');
+  abstainBtn.className = 'vote-btn skip';
+  abstainBtn.textContent = '弃权';
+  abstainBtn.addEventListener('click', () => {
+    controller.respond(currentAction.data.requestId, { targetId: null });
+    clearActionUI();
+  });
+  elements.voteButtons.appendChild(abstainBtn);
+}
+
+// 渲染目标选择按钮
+function renderTargetButtons(state, myPlayer, count = 1, extraData = {}) {
+  const selected = [];
+  const allowedTargets = extraData.allowedTargets;  // 后端指定的可选目标
+  const disabledIds = extraData.disabledIds || [];
+  const allButtons = [];  // 保存所有按钮引用
+
+  // 如果有 allowedTargets，只显示这些玩家；否则显示所有其他存活玩家
+  let candidates;
+  if (allowedTargets && allowedTargets.length > 0) {
+    candidates = state.players.filter(p => allowedTargets.includes(p.id));
+  } else {
+    candidates = state.players.filter(p => p.alive && p.id !== myPlayer.id);
+  }
+
+  candidates.forEach(player => {
+    const pos = controller.getPlayerPosition(player.id);
+    const btn = document.createElement('button');
+    btn.className = 'skill-btn';
+    btn.textContent = `${pos}号 ${player.name}`;
+    btn.dataset.playerId = player.id;
+
+    // 需要禁用的选项（如已查验）
+    if (disabledIds.includes(player.id)) {
+      btn.disabled = true;
+      btn.classList.add('disabled');
+      btn.title = '不能选择该玩家';
+    }
+
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+
+      btn.classList.toggle('selected');
+
+      if (btn.classList.contains('selected')) {
+        selected.push(player.id);
+      } else {
+        const idx = selected.indexOf(player.id);
+        if (idx >= 0) selected.splice(idx, 1);
+      }
+
+      // 更新所有按钮状态（多选时选够禁用其他）
+      updateAllButtons();
+
+      // 如果只选一个，直接响应
+      if (count === 1 && selected.length === 1) {
+        controller.respond(currentAction.data.requestId, { targetId: selected[0] });
+        clearActionUI();
+      }
+    });
+    elements.skillButtons.appendChild(btn);
+    allButtons.push(btn);
+  });
+
+  // 多选确认按钮
+  let confirmBtn = null;
+  if (count > 1) {
+    confirmBtn = document.createElement('button');
+    confirmBtn.className = 'skill-btn';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = `确认选择 (${selected.length}/${count})`;
+    confirmBtn.addEventListener('click', () => {
+      if (selected.length === count) {
+        controller.respond(currentAction.data.requestId, { targetIds: selected });
+        clearActionUI();
+      }
+    });
+    elements.skillButtons.appendChild(confirmBtn);
+  }
+
+  // 更新所有按钮状态
+  function updateAllButtons() {
+    // 更新确认按钮状态
+    if (confirmBtn) {
+      confirmBtn.textContent = `确认选择 (${selected.length}/${count})`;
+      confirmBtn.disabled = selected.length !== count;
+    }
+
+    // 多选时选够数量，禁用其他未选中的按钮
+    if (count > 1) {
+      allButtons.forEach(btn => {
+        if (selected.length >= count) {
+          if (!btn.classList.contains('selected')) {
+            btn.disabled = true;
+            btn.classList.add('disabled');
+          }
+        } else {
+          // 取消选中时重新启用
+          if (!disabledIds.includes(parseInt(btn.dataset.playerId))) {
+            btn.disabled = false;
+            btn.classList.remove('disabled');
+          }
+        }
+      });
+    }
+  }
+
+  // 单选时添加弃权按钮（如预言家查验）
+  if (count === 1) {
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'skill-btn skip';
+    skipBtn.textContent = '跳过';
+    skipBtn.addEventListener('click', () => {
+      controller.respond(currentAction.data.requestId, { targetId: null });
+      clearActionUI();
+    });
+    elements.skillButtons.appendChild(skipBtn);
+  }
+}
+
+// 渲染警长传警徽按钮
+function renderPassBadgeButtons(alivePlayers) {
+  // 添加传警徽按钮
+  alivePlayers.forEach(player => {
+    const pos = controller.getPlayerPosition(player.id);
+    const btn = document.createElement('button');
+    btn.className = 'skill-btn';
+    btn.textContent = `传警徽给 ${pos}号 ${player.name}`;
+    btn.addEventListener('click', () => {
+      controller.respond(currentAction.data.requestId, { targetId: player.id });
+      clearActionUI();
+    });
+    elements.skillButtons.appendChild(btn);
+  });
+
+  // 不传警徽按钮
+  const noPassBtn = document.createElement('button');
+  noPassBtn.className = 'skill-btn skip';
+  noPassBtn.textContent = '不传警徽';
+  noPassBtn.addEventListener('click', () => {
+    controller.respond(currentAction.data.requestId, { targetId: null });
+    clearActionUI();
+  });
+  elements.skillButtons.appendChild(noPassBtn);
+}
+
+// 渲染女巫按钮
+function renderWitchButtons(state, myPlayer, d) {
+  // 显示被杀者
+  if (d.werewolfTarget) {
+    const target = state.players.find(p => p.id === d.werewolfTarget);
+    const myId = myPlayer?.id;
+    const isSelfTargeted = d.werewolfTarget === myId;
+
+    // 检查是否可以自救（仅首夜可以自救）
+    const canSelfHeal = d.canSelfHeal !== false;
+
+    const targetPos = controller.getPlayerPosition(d.werewolfTarget);
+    if (isSelfTargeted && !canSelfHeal) {
+      elements.actionPrompt.innerHTML = `<strong>今晚 ${targetPos}号${target?.name || '某人'} 被狼人杀害！（非首夜不能自救）</strong>`;
+    } else {
+      elements.actionPrompt.innerHTML = `<strong>今晚 ${targetPos}号${target?.name || '某人'} 被狼人杀害！</strong>`;
+    }
+  } else {
+    elements.actionPrompt.textContent = '今晚没有人被狼人杀害。';
+  }
+
+  // 解药
+  if (d.healAvailable && d.werewolfTarget) {
+    const target = state.players.find(p => p.id === d.werewolfTarget);
+    const myId = myPlayer?.id;
+    const isSelfTargeted = d.werewolfTarget === myId;
+    const canSelfHeal = d.canSelfHeal !== false;
+
+    // 非首夜不能自救
+    if (isSelfTargeted && !canSelfHeal) {
+      // 不显示自救按钮
+    } else {
+      const healBtn = document.createElement('button');
+      healBtn.className = 'skill-btn heal';
+      healBtn.textContent = `💚 救 ${target?.name}`;
+      healBtn.addEventListener('click', () => {
+        controller.respond(currentAction.data.requestId, { action: 'heal' });
+        clearActionUI();
+      });
+      elements.skillButtons.appendChild(healBtn);
+    }
+  }
+
+  // 毒药
+  if (d.poisonAvailable) {
+    const poisonSection = document.createElement('div');
+    poisonSection.className = 'poison-section';
+    poisonSection.innerHTML = '<span>💀 毒药：</span>';
+
+    state.players.filter(p => p.alive && p.id !== myPlayer.id && p.id !== d.werewolfTarget).forEach(player => {
+      const pos = controller.getPlayerPosition(player.id);
+      const btn = document.createElement('button');
+      btn.className = 'skill-btn poison';
+      btn.textContent = `${pos}号 ${player.name}`;
+      btn.addEventListener('click', () => {
+        controller.respond(currentAction.data.requestId, { action: 'poison', targetId: player.id });
+        clearActionUI();
+      });
+      poisonSection.appendChild(btn);
+    });
+    elements.skillButtons.appendChild(poisonSection);
+  }
+
+  // 跳过
+  const skipBtn = document.createElement('button');
+  skipBtn.className = 'skill-btn skip';
+  skipBtn.textContent = '结束行动';
+  skipBtn.addEventListener('click', () => {
+    controller.respond(currentAction.data.requestId, { action: 'skip' });
+    clearActionUI();
+  });
+  elements.skillButtons.appendChild(skipBtn);
+}
+
+// 渲染竞选按钮
+function renderCampaignButtons() {
+  const yesBtn = document.createElement('button');
+  yesBtn.className = 'skill-btn';
+  yesBtn.textContent = '竞选';
+  yesBtn.addEventListener('click', () => {
+    controller.respond(currentAction.data.requestId, { run: true });
+    clearActionUI();
+  });
+  elements.skillButtons.appendChild(yesBtn);
+
+  const noBtn = document.createElement('button');
+  noBtn.className = 'skill-btn skip';
+  noBtn.textContent = '不竞选';
+  noBtn.addEventListener('click', () => {
+    controller.respond(currentAction.data.requestId, { run: false });
+    clearActionUI();
+  });
+  elements.skillButtons.appendChild(noBtn);
+}
+
+// 渲染退水按钮
+function renderWithdrawButtons() {
+  const yesBtn = document.createElement('button');
+  yesBtn.className = 'skill-btn';
+  yesBtn.textContent = '退水';
+  yesBtn.addEventListener('click', () => {
+    controller.respond(currentAction.data.requestId, { withdraw: true });
+    clearActionUI();
+  });
+  elements.skillButtons.appendChild(yesBtn);
+
+  const noBtn = document.createElement('button');
+  noBtn.className = 'skill-btn skip';
+  noBtn.textContent = '继续竞选';
+  noBtn.addEventListener('click', () => {
+    controller.respond(currentAction.data.requestId, { withdraw: false });
+    clearActionUI();
+  });
+  elements.skillButtons.appendChild(noBtn);
+}
+
+// 渲染发言起始位置选择 UI
+function renderSpeakerOrderUI(state) {
+  // 获取当前玩家（警长）
+  const myPlayer = state.players.find(p => p.id === controller.playerId);
+  // 警长不能选择自己作为发言起始位置（警长最后发言）
+  const alivePlayers = state.players.filter(p => p.alive && p.id !== myPlayer.id);
+
+  if (alivePlayers.length === 0) {
+    elements.actionPrompt.textContent = '没有其他存活玩家可以选择';
+    return;
+  }
+
+  alivePlayers.forEach(player => {
+    const pos = controller.getPlayerPosition(player.id);
+    const btn = document.createElement('button');
+    btn.className = 'skill-btn';
+    btn.textContent = `${pos}号 ${player.name}`;
+    btn.addEventListener('click', () => {
+      // 清除之前的选中状态
+      elements.skillButtons.querySelectorAll('button').forEach(b => {
+        b.classList.remove('selected');
+      });
+      // 选中当前
+      btn.classList.add('selected');
+      // 发送选择（assignOrder是target类型技能，需要targetId）
+      controller.respond(currentAction.data.requestId, { targetId: player.id });
+      clearActionUI();
+    });
+    elements.skillButtons.appendChild(btn);
+  });
+}
+
+// 清除行动 UI
+function clearActionUI() {
+  currentAction = null;
+  elements.actionInput.classList.remove('active');
+  elements.voteButtons.classList.remove('active');
+  elements.skillButtons.classList.remove('active');
+  elements.voteButtons.innerHTML = '';
+  elements.skillButtons.innerHTML = '';
 }
 
 // 发送发言
@@ -353,292 +721,118 @@ async function sendSpeech() {
   const content = elements.speechInput.value.trim();
   if (!content) return;
 
-  const myPlayer = getMyPlayer();
+  const myPlayer = controller.getMyPlayer();
   if (!myPlayer) {
     showError('请先加入游戏');
     return;
   }
 
-  try {
-    // 遗言阶段使用遗言 API
-    if (gameState.phase === 'last_words') {
-      await submitLastWords(content);
-      elements.speechInput.value = '';
-      return;
-    }
-
-    const res = await fetch('/api/speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId: myPlayer.id, content })
-    });
-
-    const data = await res.json();
-    if (data.success && data.state) {
-      gameState = data.state;
-      updateUI();
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('发言失败:', e);
-    showError('发言失败，请重试');
+  // 如果有行动请求，用 respond
+  if (currentAction) {
+    controller.respond(currentAction.data.requestId, { content });
+    clearActionUI();
+  } else {
+    // 否则用 speak
+    await controller.speak(content);
   }
 
   elements.speechInput.value = '';
 }
 
-// 投票
-async function vote(targetId) {
-  const myPlayer = getMyPlayer();
-  if (!myPlayer) {
-    showError('请先加入游戏');
-    return;
-  }
+// 显示错误
+function showError(message) {
+  const existingError = document.querySelector('.error-toast');
+  if (existingError) existingError.remove();
 
-  try {
-    const res = await fetch('/api/vote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: myPlayer.id, targetId })
-    });
-    const data = await res.json();
-    if (data.success && data.state) {
-      gameState = data.state;
-      updateUI();
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('投票失败:', e);
-    showError('投票失败，请重试');
-  }
-}
-
-// 预言家查验
-async function seerCheck(targetId) {
-  const myPlayer = getMyPlayer();
-  if (!myPlayer) {
-    showError('请先加入游戏');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/seer-check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seerId: myPlayer.id, targetId })
-    });
-    const data = await res.json();
-    if (data.success) {
-      // 查验结果通过私有消息返回，不需要 alert
-      if (data.state) {
-        gameState = data.state;
-        updateUI();
-      }
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('查验失败:', e);
-    showError('查验失败，请重试');
-  }
-}
-
-// 女巫行动
-async function witchAction(action, targetId = null) {
-  const myPlayer = getMyPlayer();
-  if (!myPlayer) {
-    showError('请先加入游戏');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/witch-action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ witchId: myPlayer.id, action, targetId })
-    });
-    const data = await res.json();
-    if (data.success && data.state) {
-      gameState = data.state;
-      updateUI();
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('女巫行动失败:', e);
-    showError('操作失败，请重试');
-  }
-}
-
-// 守卫守护
-async function guardProtect(targetId) {
-  const myPlayer = getMyPlayer();
-  if (!myPlayer) {
-    showError('请先加入游戏');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/guard-protect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ guardId: myPlayer.id, targetId })
-    });
-    const data = await res.json();
-    if (data.success && data.state) {
-      gameState = data.state;
-      updateUI();
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('守护失败:', e);
-    showError('守护失败，请重试');
-  }
-}
-
-// 发表遗言
-async function submitLastWords(content) {
-  const myPlayer = getMyPlayer();
-  if (!myPlayer) {
-    showError('请先加入游戏');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/last-words', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId: myPlayer.id, content })
-    });
-    const data = await res.json();
-    if (data.success && data.state) {
-      gameState = data.state;
-      updateUI();
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('遗言失败:', e);
-    showError('遗言失败，请重试');
-  }
-}
-
-// 猎人开枪
-async function hunterShoot(targetId) {
-  const myPlayer = getMyPlayer();
-  if (!myPlayer) {
-    showError('请先加入游戏');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/hunter-shoot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hunterId: myPlayer.id, targetId })
-    });
-    const data = await res.json();
-    if (data.success && data.state) {
-      gameState = data.state;
-      updateUI();
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('开枪失败:', e);
-    showError('开枪失败，请重试');
-  }
-}
-
-// 猎人不开枪
-async function hunterSkip() {
-  const myPlayer = getMyPlayer();
-  if (!myPlayer) {
-    showError('请先加入游戏');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/hunter-skip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hunterId: myPlayer.id })
-    });
-    const data = await res.json();
-    if (data.success && data.state) {
-      gameState = data.state;
-      updateUI();
-    } else if (!data.success) {
-      showError(data.error);
-    }
-  } catch (e) {
-    console.error('跳过失败:', e);
-    showError('操作失败，请重试');
-  }
-}
-
-// 重新开始
-async function restartGame() {
-  await fetch('/api/reset', { method: 'POST' });
-  playerName = null;
-  playerId = null;
-  location.reload();
+  const toast = document.createElement('div');
+  toast.className = 'error-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
 }
 
 // 更新 UI
-function updateUI() {
-  if (!gameState) return;
+function updateUI(state) {
+  if (!state) {
+    state = controller.getState();
+  }
+  if (!state) {
+    return;
+  }
 
-  updateHeader();
-  updatePlayers();
+  // Debug 模式：根据板子角色更新选项（debug组件显示已在loadPresets中处理）
+  if (SERVER_DEBUG_MODE && state.boardRoles) {
+    updateDebugRoleSelect(state.boardRoles);
+  }
+
+  updateHeader(state);
+  updatePlayers(state);
   updateMessages();
-  updateAction();
+
+  // 如果没有行动请求，更新默认操作区
+  if (!currentAction) {
+    updateDefaultAction(state);
+  }
 }
 
 // 更新头部
-function updateHeader() {
+function updateHeader(state) {
   const phaseNames = {
     waiting: '等待玩家加入',
+    cupid: '丘比特连接',
+    guard: '守卫守护',
     night_werewolf_discuss: '狼人讨论中',
     night_werewolf_vote: '狼人投票中',
-    night_seer: '预言家查验中',
-    night_witch: '女巫行动中',
-    night_guard: '守卫守护中',
+    witch: '女巫行动',
+    seer: '预言家查验',
+    sheriff_campaign: '警长竞选',
+    sheriff_speech: '竞选发言',
+    sheriff_vote: '警长投票',
+    day_announce: '公布死讯',
+    last_words: '遗言阶段',
     day_discuss: '白天讨论',
     day_vote: '白天投票',
-    vote_result: '投票结果',
-    last_words: '遗言阶段',
-    hunter_shoot: '猎人开枪',
+    post_vote: '放逐后处理',
     game_over: '游戏结束'
   };
 
-  // 显示阶段和玩家数量
-  let phaseText = phaseNames[gameState.phase] || gameState.phase;
-  if (gameState.phase === 'waiting') {
-    const current = gameState.players ? gameState.players.length : 0;
-    const total = gameState.playerCount || 9;
+  let phaseText = phaseNames[state.phase] || state.phase;
+  if (state.phase === 'waiting') {
+    const current = state.players?.length || 0;
+    const total = state.playerCount || state.preset?.playerCount || 9;
     phaseText = `等待玩家加入 (${current}/${total})`;
+    // 板子锁定：禁用选择器
+    if (state.presetLocked && state.presetId) {
+      showPresetLocked(state.presetId);
+    }
+  }
+  // 游戏中头部显示板子名称
+  if (state.preset && state.phase !== 'waiting') {
+    phaseText = state.preset.name + ' ▾ | ' + phaseText;
   }
   elements.phaseInfo.textContent = phaseText;
 
-  if (gameState.dayCount > 0) {
-    const isNight = gameState.phase.startsWith('night');
-    elements.dayCount.textContent = `${isNight ? '第' : '第'}${gameState.dayCount}${isNight ? '夜' : '天'}`;
+  if (state.dayCount > 0) {
+    const isNight = ['cupid', 'guard', 'night_werewolf_discuss', 'night_werewolf_vote', 'witch', 'seer'].includes(state.phase);
+    elements.dayCount.textContent = `第${state.dayCount}${isNight ? '夜' : '天'}`;
   } else {
     elements.dayCount.textContent = '';
   }
 
-  // 显示角色信息
-  const myPlayer = getMyPlayer();
-  if (myPlayer && myPlayer.role) {
-    let roleHtml = `<span class="role-badge ${myPlayer.role}">${ROLE_NAMES[myPlayer.role]}</span>`;
-    // 狼人显示队友
-    if (myPlayer.role === 'werewolf') {
-      const teammates = gameState.players
-        .filter(p => p.role === 'werewolf' && p.id !== myPlayer.id)
+  const myPlayer = controller.getMyPlayer();
+  if (myPlayer?.role) {
+    const roleId = myPlayer.role.id || myPlayer.role;
+    let roleHtml = `<span class="role-badge ${roleId}">${ROLE_NAMES[roleId] || roleId}</span>`;
+
+    // 显示情侣信息
+    if (state.self?.isCouple && state.self?.couplePartner) {
+      const partnerPos = controller.getPlayerPosition(state.self.couplePartner);
+      roleHtml += ` <span class="couple-info">情侣: ${partnerPos}号</span>`;
+    }
+
+    if (myPlayer.role.camp === 'wolf' || myPlayer.role === 'werewolf') {
+      const teammates = state.players
+        .filter(p => (p.role?.camp === 'wolf' || p.role === 'werewolf') && p.id !== myPlayer.id)
         .map(p => p.name);
       if (teammates.length > 0) {
         roleHtml += ` <span class="teammates">队友: ${teammates.join(', ')}</span>`;
@@ -652,51 +846,63 @@ function updateHeader() {
 }
 
 // 更新玩家列表
-function updatePlayers() {
+function updatePlayers(state) {
   elements.playersGrid.innerHTML = '';
 
-  // 获取当前玩家（用于判断可见性）
-  const myPlayer = getMyPlayer();
-  const total = gameState.playerCount || 9;
-  const currentCount = gameState.players ? gameState.players.length : 0;
+  const myPlayer = controller.getMyPlayer();
+  const total = state.playerCount || state.preset?.playerCount || 9;
+  const currentCount = state.players?.length || 0;
 
-  // 显示已有玩家
-  gameState.players.forEach((player, index) => {
+  state.players?.forEach((player, index) => {
     const position = index + 1;
     const card = document.createElement('div');
     card.className = 'player-card';
     if (!player.alive) card.classList.add('dead');
-    if (player.id === gameState.currentSpeaker) card.classList.add('current');
+    if (player.id === state.currentSpeaker) card.classList.add('current');
     if (myPlayer && player.id === myPlayer.id) card.classList.add('self');
 
-    // 角色显示逻辑：只显示自己的角色和狼人队友
+    // 显示警长标记
+    const isSheriff = player.isSheriff || state.sheriff === player.id;
+
+    // 显示情侣标记
+    const isCouple = player.isCouple;
+
+    // 显示翻牌状态（猎人/白痴）
+    const revealed = player.revealed;
+
     let roleText = '';
     if (player.role) {
+      const roleId = player.role.id || player.role;
       if (myPlayer && player.id === myPlayer.id) {
-        // 自己的角色
-        roleText = ROLE_NAMES[player.role] || '';
-      } else if (myPlayer && myPlayer.role === 'werewolf' && player.role === 'werewolf') {
-        // 狼人可以看到队友
-        roleText = ROLE_NAMES[player.role] || '';
+        roleText = ROLE_NAMES[roleId] || '';
+      } else if (myPlayer && (myPlayer.role.camp === 'wolf' || myPlayer.role === 'werewolf') && (player.role.camp === 'wolf' || player.role === 'werewolf')) {
+        roleText = ROLE_NAMES[roleId] || '';
       }
-      // 游戏结束时显示所有角色
-      if (gameState.phase === 'game_over') {
-        roleText = ROLE_NAMES[player.role] || '';
+      if (state.phase === 'game_over') {
+        roleText = ROLE_NAMES[roleId] || '';
       }
     }
 
+    let statusText = player.alive ? (player.isAI ? 'AI' : '玩家') : '已死亡';
+    if (isSheriff) statusText += ' 🏅';
+    if (isCouple) statusText += ' 💕';
+    if (revealed) statusText += ' 📢';
+
+    // 警徽显示
+    const sheriffBadge = isSheriff ? '<div class="sheriff-badge">🔱</div>' : '';
+
     card.innerHTML = `
+      ${sheriffBadge}
       <div class="player-position">${position}号</div>
       <div class="player-name">${player.name}</div>
-      <div class="player-status">${player.alive ? (player.isAI ? 'AI' : '玩家') : '已死亡'}</div>
+      <div class="player-status">${statusText}</div>
       ${roleText ? `<div class="player-role">${roleText}</div>` : ''}
     `;
 
     elements.playersGrid.appendChild(card);
   });
 
-  // 显示空位（只在等待阶段显示）
-  if (gameState.phase === 'waiting') {
+  if (state.phase === 'waiting') {
     for (let i = currentCount; i < total; i++) {
       const position = i + 1;
       const emptySlot = document.createElement('div');
@@ -706,96 +912,141 @@ function updatePlayers() {
         <div class="player-name">空位</div>
         <div class="player-status">点击添加AI</div>
       `;
-      emptySlot.addEventListener('click', addAI);
+      emptySlot.addEventListener('click', () => controller.addAI());
       elements.playersGrid.appendChild(emptySlot);
     }
   }
 }
 
-// 更新消息（现在消息在 SSE 处理中直接显示）
+// 更新消息
 function updateMessages() {
-  // 消息已在 SSE 处理中显示，这里不再处理
-}
+  const messages = controller.getMessageHistory();
+  const state = controller.getState();
 
-// 显示单条消息
-function displayMessage(msg) {
-  const { type, content, playerId, playerName, className, debugInfo } = msg;
-
-  if (type === 'phase_start') {
-    // 阶段分割线
-    addPhaseDivider(content);
-  } else if (type === 'speech' || type === 'wolf_speech') {
-    // 发言消息，显示为"9号小明: xxxxx"，用 playerId 找位置
-    const playerIndex = gameState?.players?.findIndex(p => p.id === playerId);
-    const pos = playerIndex >= 0 ? playerIndex + 1 : '';
-    let displayContent = `${pos}号${playerName}：${content}`;
-
-    // 如果有调试信息就显示（不依赖 debugMode 变量）
-    if (debugInfo) {
-      const debugHtml = formatDebugInfo(debugInfo);
-      displayContent += debugHtml;
+  messages.forEach(msg => {
+    if (!document.querySelector(`[data-msg-id="${msg.id}"]`)) {
+      displayMessage(msg, state);
     }
-
-    addMessage(displayContent, className);
-  } else {
-    // 其他消息（系统消息、私有消息等）
-    addMessage(content, className);
-  }
+  });
 }
 
-// 格式化调试信息
-function formatDebugInfo(debugInfo) {
-  const source = debugInfo.source === 'llm' ? '🤖 LLM' : '🎲 随机';
-  let html = `<br><hr style="margin: 8px 0; border-color: #444;"><details style="font-size: 12px; color: #888;"><summary>${source} 决策</summary>`;
-
-  // 显示完整的 messages
-  if (debugInfo.messages && debugInfo.messages.length > 0) {
-    html += '<div style="max-height: 300px; overflow-y: auto;">';
-    debugInfo.messages.forEach((msg, i) => {
-      const roleColor = msg.role === 'system' ? '#f39c12' : msg.role === 'user' ? '#3498db' : '#27ae60';
-      const roleLabel = msg.role === 'system' ? '系统' : msg.role === 'user' ? '用户' : 'AI';
-      html += `<div style="margin: 8px 0; padding: 8px; background: #1a1a1a; border-radius: 4px; border-left: 3px solid ${roleColor};">`;
-      html += `<div style="color: ${roleColor}; font-weight: bold; margin-bottom: 4px;">[${roleLabel}]</div>`;
-      html += `<pre style="white-space: pre-wrap; word-break: break-all; margin: 0; font-size: 11px;">${escapeHtml(msg.content)}</pre>`;
-      html += `</div>`;
+// 显示消息
+function displayMessage(msg, state) {
+  if (msg.type === 'phase_start') {
+    addPhaseDivider(msg.phaseName || msg.content || msg.phase, msg.id);
+  } else if (msg.type === 'speech' || msg.type === 'wolf_speech' || msg.type === 'last_words') {
+    const pos = controller.getPlayerPosition(msg.playerId);
+    const prefix = msg.type === 'last_words' ? '【遗言】' : '';
+    const className = msg.type === 'wolf_speech' ? 'wolf-channel' : (msg.type === 'last_words' ? 'last-words' : '');
+    addMessage(`${prefix}${pos}号${msg.playerName}：${msg.content}`, className, msg.id);
+  } else if ((msg.type === 'vote_result' || msg.type === 'wolf_vote_result') && msg.voteDetails) {
+    // 显示投票结果详情（公开投票或狼人内部投票）
+    const isWolfVote = msg.type === 'wolf_vote_result';
+    let content = '<div class="vote-result">';
+    content += `<div class="vote-title">${isWolfVote ? '🔪 狼人刀人投票' : '投票结果'}</div>`;
+    // 显示最终结果（狼人刀谁）
+    if (isWolfVote && msg.content) {
+      content += `<div class="vote-final">${msg.content}</div>`;
+    }
+    content += '<div class="vote-details">';
+    msg.voteDetails.forEach(v => {
+      content += `<div>${v.voter} → ${v.target}</div>`;
     });
-    html += '</div>';
+    content += '</div>';
+    if (msg.voteCounts) {
+      content += '<div class="vote-counts">';
+      for (const [playerId, count] of Object.entries(msg.voteCounts)) {
+        const pos = controller.getPlayerPosition(Number(playerId));
+        const player = state?.players?.find(p => p.id === Number(playerId));
+        content += `<div>${pos}号${player?.name || ''}: ${count}票</div>`;
+      }
+      content += '</div>';
+    }
+    content += '</div>';
+    addMessage(content, isWolfVote ? 'wolf-vote-result' : 'vote-result', msg.id);
+  } else if (msg.type === 'vote_tie') {
+    addMessage(msg.content, 'vote-tie', msg.id);
+  } else if (msg.type === 'sheriff_candidates') {
+    addMessage(msg.content, 'sheriff-candidates', msg.id);
+  } else if (msg.type === 'sheriff_elected') {
+    addMessage(msg.content, 'sheriff-elected', msg.id);
+  } else if (msg.type === 'death_announce' && msg.deaths) {
+    if (window.frontendLogger) {
+      window.frontendLogger.info(`[Death] msg: ${JSON.stringify(msg)}`);
+    }
+    // 显示死亡消息
+    let content = '<div class="death-announce">';
+    msg.deaths.forEach(d => {
+      const pos = controller.getPlayerPosition(d.id);
+      let reasonText = '';
+      switch (d.reason) {
+        case 'wolf':
+          reasonText = '被狼人击杀';
+          break;
+        case 'poison':
+          reasonText = '被毒杀';
+          break;
+        case 'conflict':
+          reasonText = '同守同救';
+          break;
+        case 'vote':
+          reasonText = '被放逐';
+          break;
+        case 'hunter':
+          reasonText = '被猎人带走';
+          break;
+        case 'couple':
+          reasonText = '殉情';
+          break;
+        default:
+          reasonText = '死亡';
+      }
+      content += `<div>${pos}号${d.name} ${reasonText}</div>`;
+    });
+    content += '</div>';
+    addMessage(content, 'system death', msg.id);
+  } else if (msg.type === 'action' || msg.type === 'system') {
+    // 私有消息（visibility: 'self'）显示给玩家自己
+    if (msg.visibility === 'self') {
+      addMessage(`[私密] ${msg.content}`, 'private', msg.id);
+    } else {
+      addMessage(msg.content, msg.className || msg.type, msg.id);
+    }
+  } else {
+    addMessage(msg.content, msg.className || msg.type, msg.id);
   }
-
-  html += '</details>';
-  return html;
-}
-
-// HTML 转义
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 // 添加消息
-function addMessage(content, className = '') {
+function addMessage(content, className = '', id = null) {
+  // 如果有id，检查是否已存在（防止重复添加）
+  if (id && document.querySelector(`[data-msg-id="${id}"]`)) {
+    return;
+  }
   const msg = document.createElement('div');
   msg.className = `message ${className}`;
-  // 支持 <br> 标签
-  const formattedContent = content.replace(/\n/g, '<br>');
-  msg.innerHTML = `<div class="message-content">${formattedContent}</div>`;
+  if (id) msg.dataset.msgId = id;
+  msg.innerHTML = `<div class="message-content">${content.replace(/\n/g, '<br>')}</div>`;
   elements.messages.appendChild(msg);
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
 // 添加阶段分割线
-function addPhaseDivider(phaseText) {
+function addPhaseDivider(phaseText, msgId = null) {
+  // 检查是否已存在
+  if (msgId && document.querySelector(`[data-msg-id="${msgId}"]`)) {
+    return;
+  }
   const divider = document.createElement('div');
   divider.className = 'phase-divider';
+  if (msgId) divider.dataset.msgId = msgId;
   divider.innerHTML = `<span>${phaseText}</span>`;
   elements.messages.appendChild(divider);
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
-// 更新操作区域
-function updateAction() {
-  // 重置
+// 更新默认操作区（没有行动请求时）
+function updateDefaultAction(state) {
   elements.actionInput.classList.remove('active');
   elements.voteButtons.classList.remove('active');
   elements.skillButtons.classList.remove('active');
@@ -803,340 +1054,92 @@ function updateAction() {
   elements.voteButtons.innerHTML = '';
   elements.skillButtons.innerHTML = '';
 
-  // 获取当前玩家
-  const myPlayer = getMyPlayer();
-  console.log('updateAction - myPlayer:', myPlayer?.name, 'role:', myPlayer?.role, 'phase:', gameState?.phase);
+  const myPlayer = controller.getMyPlayer();
 
-  // 未加入游戏
   if (!myPlayer) {
     elements.actionPrompt.textContent = '请先加入游戏';
     return;
   }
 
-  // 已死亡（遗言阶段、猎人开枪阶段、游戏结束除外）
-  if (!myPlayer.alive && gameState.phase !== 'last_words' && gameState.phase !== 'hunter_shoot' && gameState.phase !== 'game_over') {
+  if (!myPlayer.alive && state.phase !== 'last_words' && state.phase !== 'game_over' && state.phase !== 'post_vote') {
     elements.actionPrompt.textContent = '你已死亡，观战中...';
     return;
   }
 
-  // 根据阶段显示操作
-  const phase = gameState.phase;
-
-  // 等待阶段
-  if (phase === 'waiting') {
-    const current = gameState.players ? gameState.players.length : 0;
-    const total = gameState.playerCount || 9;
-    if (current < total) {
-      elements.actionPrompt.textContent = `等待更多玩家加入... (${current}/${total})，点击空位可添加AI`;
-    } else {
-      elements.actionPrompt.textContent = '人已齐，即将开始游戏...';
-    }
+  if (state.phase === 'waiting') {
+    const current = state.players?.length || 0;
+    const total = state.playerCount || state.preset?.playerCount || 9;
+    elements.actionPrompt.textContent = current < total ? `等待玩家加入... (${current}/${total})` : '人已齐，即将开始...';
     return;
   }
 
-  // 游戏结束
-  if (phase === 'game_over') {
-    elements.actionPrompt.innerHTML = `<strong>${gameState.winner === 'werewolf' ? '狼人阵营获胜！' : '好人阵营获胜！'}</strong>`;
+  if (state.phase === 'game_over') {
+    let winnerText = '';
+    switch (state.winner) {
+      case 'wolf':
+        winnerText = '狼人阵营获胜！';
+        break;
+      case 'good':
+        winnerText = '好人阵营获胜！';
+        break;
+      case 'third':
+        winnerText = '第三方（情侣）获胜！';
+        break;
+      default:
+        winnerText = '游戏结束';
+    }
+
+    // 显示获胜信息和所有玩家身份
+    let gameOverHtml = `<div class="game-over"><strong>${winnerText}</strong>`;
+    gameOverHtml += '<div class="all-roles">';
+    if (state.gameOverInfo && state.gameOverInfo.players) {
+      state.gameOverInfo.players.forEach((p, idx) => {
+        // 使用后端传来的 display，fallback 用索引计算位置
+        const display = p.display || `${idx + 1}号${p.name}`;
+        const roleName = p.role ? ROLE_NAMES[p.role.id] || p.role.id : '未知';
+        const deathInfo = p.alive ? '存活' : (p.deathReason ? `死亡(${p.deathReason})` : '死亡');
+        const sheriffMark = p.isSheriff ? ' 🏅警长' : '';
+        const coupleMark = p.isCouple ? ' 💕情侣' : '';
+        gameOverHtml += `<div>${display}: ${roleName} - ${deathInfo}${sheriffMark}${coupleMark}</div>`;
+      });
+    }
+    gameOverHtml += '</div></div>';
+
+    elements.actionPrompt.innerHTML = gameOverHtml;
     elements.skillButtons.classList.add('active');
     const restartBtn = document.createElement('button');
     restartBtn.className = 'skill-btn';
     restartBtn.textContent = '再来一局';
-    restartBtn.addEventListener('click', restartGame);
+    restartBtn.addEventListener('click', async () => {
+      await controller.reset();
+      location.reload();
+    });
     elements.skillButtons.appendChild(restartBtn);
     return;
   }
 
-  // 显示当前阶段提示（仅用于白天投票等通用阶段）
-  const phaseTips = {
-    day_vote: '白天 - 投票中',
-    vote_result: '投票结果公布中'
+  // 显示当前阶段提示
+  const phasePrompts = {
+    cupid: '丘比特正在选择情侣...',
+    guard: '守卫正在守护...',
+    night_werewolf_discuss: '狼人正在讨论...',
+    night_werewolf_vote: '狼人正在投票...',
+    witch: '女巫正在行动...',
+    seer: '预言家正在查验...',
+    sheriff_campaign: '警长竞选中...',
+    sheriff_speech: '竞选发言中...',
+    sheriff_vote: '警长投票中...',
+    day_announce: '天亮了！',
+    last_words: '遗言阶段...',
+    day_discuss: '白天讨论中...',
+    day_vote: '投票中...',
+    post_vote: '放逐后处理中...'
   };
 
-  // 轮到我发言
-  if (myPlayer && gameState.currentSpeaker === myPlayer.id) {
-    if (phase === 'night_werewolf_discuss' || phase === 'day_discuss') {
-      elements.actionInput.classList.add('active');
-      elements.actionPrompt.textContent = '轮到你发言了';
-      return;
-    }
-  }
-
-  // 夜间阶段
-  if (phase === 'night_werewolf_discuss') {
-    if (myPlayer.role === 'werewolf') {
-      // 狼人讨论阶段
-      if (gameState.currentSpeaker && gameState.currentSpeaker !== myPlayer.id) {
-        const speaker = gameState.players.find(p => p.id === gameState.currentSpeaker);
-        if (speaker) {
-          const pos = getPlayerPosition(speaker.id);
-          elements.actionPrompt.textContent = `等待 ${pos}号${speaker.name} 发言...`;
-          return;
-        }
-      }
-      // 轮到自己发言会在后面处理
-    } else {
-      // 非狼人什么都不显示
-      return;
-    }
-  } else if (phase === 'night_werewolf_vote') {
-    if (myPlayer.role === 'werewolf') {
-      // 狼人投票阶段，继续往下执行显示投票按钮
-    } else {
-      // 非狼人什么都不显示
-      return;
-    }
-  } else if (phase === 'night_seer') {
-    if (myPlayer.role === 'seer') {
-      elements.actionPrompt.textContent = '请选择要查验的玩家';
-      // 继续往下执行显示查验按钮
-    } else {
-      // 非预言家什么都不显示
-      return;
-    }
-  } else if (phase === 'night_witch') {
-    if (myPlayer.role === 'witch') {
-      // 女巫操作在后面处理
-    } else {
-      return;
-    }
-  } else if (phase === 'night_guard') {
-    if (myPlayer.role === 'guard') {
-      elements.actionPrompt.textContent = '请选择要守护的玩家';
-      // 继续往下执行显示守护按钮
-    } else {
-      // 非守卫什么都不显示
-      return;
-    }
-  }
-
-  // 白天发言阶段：显示当前发言者
-  if (phase === 'day_discuss' && gameState.currentSpeaker) {
-    if (gameState.currentSpeaker === myPlayer.id) {
-      elements.actionInput.classList.add('active');
-      elements.actionPrompt.textContent = '轮到你发言了';
-      return;
-    }
-    const speaker = gameState.players.find(p => p.id === gameState.currentSpeaker);
-    if (speaker) {
-      const pos = getPlayerPosition(speaker.id);
-      elements.actionPrompt.textContent = `等待 ${pos}号${speaker.name} 发言...`;
-      return;
-    }
-  }
-
-  // 其他阶段显示阶段提示
-  elements.actionPrompt.textContent = phaseTips[phase] || '';
-
-  // 狼人投票阶段
-  if (phase === 'night_werewolf_vote' && myPlayer.role === 'werewolf') {
-    // 检查是否已投票
-    if (gameState.hasVoted) {
-      elements.actionPrompt.textContent = '已投票，等待其他狼人...';
-      return;
-    }
-
-    elements.voteButtons.classList.add('active');
-    elements.actionPrompt.textContent = '请选择今晚要击杀的目标';
-
-    gameState.players.forEach(player => {
-      if (!player.alive) return;
-
-      const isTeammate = player.role === 'werewolf';
-      const isSelf = player.id === myPlayer.id;
-      const position = getPlayerPosition(player.id);
-
-      const btn = document.createElement('button');
-      btn.className = 'vote-btn';
-      if (isSelf || isTeammate) {
-        btn.classList.add('danger');
-      }
-      btn.textContent = `${position}号 ${player.name}` + (isSelf ? ' (自己)' : isTeammate ? ' (队友)' : '');
-      btn.addEventListener('click', () => vote(player.id));
-      elements.voteButtons.appendChild(btn);
-    });
-    return;
-  }
-
-  // 投票阶段
-  if (phase === 'day_vote') {
-    // 检查是否已投票
-    if (gameState.hasVoted) {
-      elements.actionPrompt.textContent = '已投票，等待其他玩家...';
-      return;
-    }
-
-    elements.voteButtons.classList.add('active');
-    elements.actionPrompt.textContent = '请投票放逐一名玩家（可弃权）';
-
-    gameState.players.filter(p => p.alive && p.id !== myPlayer.id).forEach(player => {
-      const position = getPlayerPosition(player.id);
-      const btn = document.createElement('button');
-      btn.className = 'vote-btn';
-      btn.textContent = `${position}号 ${player.name}`;
-      btn.addEventListener('click', () => vote(player.id));
-      elements.voteButtons.appendChild(btn);
-    });
-
-    // 弃权按钮
-    const abstainBtn = document.createElement('button');
-    abstainBtn.className = 'vote-btn skip';
-    abstainBtn.textContent = '弃权';
-    abstainBtn.addEventListener('click', () => vote(null));
-    elements.voteButtons.appendChild(abstainBtn);
-    return;
-  }
-
-  // 预言家查验
-  if (phase === 'night_seer' && myPlayer.role === 'seer') {
-    elements.skillButtons.classList.add('active');
-
-    gameState.players.filter(p => p.alive && p.id !== myPlayer.id).forEach(player => {
-      const position = getPlayerPosition(player.id);
-      const btn = document.createElement('button');
-      btn.className = 'skill-btn';
-      btn.textContent = `查验 ${position}号 ${player.name}`;
-      btn.addEventListener('click', () => seerCheck(player.id));
-      elements.skillButtons.appendChild(btn);
-    });
-    return;
-  }
-
-  // 女巫行动
-  if (phase === 'night_witch' && myPlayer.role === 'witch') {
-    elements.skillButtons.classList.add('active');
-
-    const usedTonight = gameState.witchUsedTonight || { healed: false, poisoned: false };
-
-    // 显示刀口信息和药水状态
-    let promptHtml = '';
-    if (gameState.werewolfTarget) {
-      const isSelf = gameState.players.find(p => p.name === gameState.werewolfTarget)?.id === myPlayer.id;
-      const savedMark = usedTonight.healed ? '（已救）' : '';
-      promptHtml = `<strong>⚠️ 今晚【${gameState.werewolfTarget}】被狼人杀害了！${isSelf ? '（是你自己）' : ''}${savedMark}</strong><br>`;
-    } else {
-      promptHtml = '今晚没有人被狼人杀害。<br>';
-    }
-
-    // 显示药水状态
-    const healStatus = gameState.witchPotion?.heal
-      ? (usedTonight.healed ? '✅ 解药已使用（今晚）' : '✅ 解药可用')
-      : '❌ 解药已用完';
-    const poisonStatus = gameState.witchPotion?.poison
-      ? (usedTonight.poisoned ? '✅ 毒药已使用（今晚）' : '✅ 毒药可用')
-      : '❌ 毒药已用完';
-    promptHtml += `<small style="color:#888">${healStatus} | ${poisonStatus}</small><br>`;
-
-    elements.actionPrompt.innerHTML = promptHtml + '请选择：';
-
-    // 解药按钮：有解药、有人被刀、今晚还没用解药
-    if (gameState.witchPotion?.heal && gameState.werewolfTarget && !usedTonight.healed) {
-      const targetPlayer = gameState.players.find(p => p.name === gameState.werewolfTarget);
-      const targetPosition = targetPlayer ? getPlayerPosition(targetPlayer.id) : '';
-      const healBtn = document.createElement('button');
-      healBtn.className = 'skill-btn heal';
-      healBtn.textContent = `💚 救 ${targetPosition}号 ${gameState.werewolfTarget}`;
-      healBtn.addEventListener('click', () => witchAction('heal'));
-      elements.skillButtons.appendChild(healBtn);
-    }
-
-    // 毒药按钮：有毒药、今晚还没用毒药
-    if (gameState.witchPotion?.poison && !usedTonight.poisoned) {
-      // 创建毒药选择区域
-      const poisonSection = document.createElement('div');
-      poisonSection.className = 'poison-section';
-      poisonSection.innerHTML = '<span>💀 毒药：</span>';
-
-      // 不能毒被刀的人，不能毒自己
-      gameState.players.filter(p => {
-        if (!p.alive || p.id === myPlayer.id) return false;
-        // 不能毒被刀的人
-        if (gameState.werewolfTarget && p.name === gameState.werewolfTarget) return false;
-        return true;
-      }).forEach(player => {
-        const position = getPlayerPosition(player.id);
-        const btn = document.createElement('button');
-        btn.className = 'skill-btn poison';
-        btn.textContent = `${position}号 ${player.name}`;
-        btn.addEventListener('click', () => witchAction('poison', player.id));
-        poisonSection.appendChild(btn);
-      });
-
-      elements.skillButtons.appendChild(poisonSection);
-    }
-
-    // 结束行动按钮
-    const skipBtn = document.createElement('button');
-    skipBtn.className = 'skill-btn skip';
-    skipBtn.textContent = '结束行动';
-    skipBtn.addEventListener('click', () => witchAction('skip'));
-    elements.skillButtons.appendChild(skipBtn);
-    return;
-  }
-
-  // 守卫守护
-  if (phase === 'night_guard' && myPlayer.role === 'guard') {
-    elements.skillButtons.classList.add('active');
-    elements.actionPrompt.textContent = '请选择要守护的玩家';
-
-    gameState.players.filter(p => p.alive).forEach(player => {
-      const position = getPlayerPosition(player.id);
-      const btn = document.createElement('button');
-      btn.className = 'skill-btn';
-      btn.textContent = `守护 ${position}号 ${player.name}`;
-      btn.addEventListener('click', () => guardProtect(player.id));
-      elements.skillButtons.appendChild(btn);
-    });
-    return;
-  }
-
-  // 遗言阶段
-  if (phase === 'last_words') {
-    // 检查是否轮到自己发表遗言
-    const lastWordsPlayer = gameState.lastWordsPlayer;
-    if (lastWordsPlayer && lastWordsPlayer.id === myPlayer.id) {
-      elements.actionInput.classList.add('active');
-      elements.actionPrompt.textContent = '请发表遗言';
-    } else if (lastWordsPlayer) {
-      const pos = getPlayerPosition(lastWordsPlayer.id);
-      elements.actionPrompt.textContent = `等待 ${pos}号${lastWordsPlayer.name} 发表遗言...`;
-    } else {
-      elements.actionPrompt.textContent = '等待遗言...';
-    }
-    return;
-  }
-
-  // 猎人开枪阶段
-  if (phase === 'hunter_shoot' && myPlayer.role === 'hunter') {
-    // 检查自己是否是那个可以开枪的猎人（刚死且不是被毒死的）
-    const myDeadPlayer = gameState.players.find(p => p.id === myPlayer.id);
-    const canShoot = myDeadPlayer && !myDeadPlayer.alive &&
-                     myDeadPlayer.deathReason &&
-                     myDeadPlayer.deathReason !== 'poison';
-
-    if (canShoot) {
-      elements.skillButtons.classList.add('active');
-      elements.actionPrompt.textContent = '你是猎人！请选择要带走的玩家，或选择不开枪';
-
-      // 添加开枪按钮
-      gameState.players.filter(p => p.alive).forEach(player => {
-        const position = getPlayerPosition(player.id);
-        const btn = document.createElement('button');
-        btn.className = 'skill-btn';
-        btn.textContent = `开枪带走 ${position}号 ${player.name}`;
-        btn.addEventListener('click', () => hunterShoot(player.id));
-        elements.skillButtons.appendChild(btn);
-      });
-
-      // 不开枪按钮
-      const skipBtn = document.createElement('button');
-      skipBtn.className = 'skill-btn skip';
-      skipBtn.textContent = '不开枪';
-      skipBtn.addEventListener('click', () => hunterSkip());
-      elements.skillButtons.appendChild(skipBtn);
-    } else {
-      elements.actionPrompt.textContent = '等待猎人开枪...';
-    }
-    return;
+  if (phasePrompts[state.phase]) {
+    elements.actionPrompt.textContent = phasePrompts[state.phase];
+  } else {
+    elements.actionPrompt.textContent = '等待中...';
   }
 }
 

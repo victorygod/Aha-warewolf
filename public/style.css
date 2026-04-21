@@ -4,6 +4,11 @@
   box-sizing: border-box;
 }
 
+/* 通用隐藏类 */
+.hidden {
+  display: none !important;
+}
+
 :root {
   --primary: #4a90d9;
   --danger: #e74c3c;
@@ -39,6 +44,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
+  cursor: pointer;
 }
 
 #phase-info {
@@ -71,35 +77,14 @@ body {
   font-weight: 600;
 }
 
-.role-badge.werewolf {
-  background: rgba(142, 68, 173, 0.5);
-  color: #fff;
-}
-
-.role-badge.seer {
-  background: rgba(52, 152, 219, 0.5);
-  color: #fff;
-}
-
-.role-badge.witch {
-  background: rgba(155, 89, 182, 0.5);
-  color: #fff;
-}
-
-.role-badge.guard {
-  background: rgba(46, 204, 113, 0.5);
-  color: #fff;
-}
-
-.role-badge.hunter {
-  background: rgba(230, 126, 34, 0.5);
-  color: #fff;
-}
-
-.role-badge.villager {
-  background: rgba(149, 165, 166, 0.5);
-  color: #fff;
-}
+.role-badge.werewolf { background: rgba(142, 68, 173, 0.5); }
+.role-badge.seer { background: rgba(52, 152, 219, 0.5); }
+.role-badge.witch { background: rgba(155, 89, 182, 0.5); }
+.role-badge.guard { background: rgba(46, 204, 113, 0.5); }
+.role-badge.hunter { background: rgba(230, 126, 34, 0.5); }
+.role-badge.villager { background: rgba(149, 165, 166, 0.5); }
+.role-badge.idiot { background: rgba(241, 196, 15, 0.5); }
+.role-badge.cupid { background: rgba(231, 76, 60, 0.5); }
 
 .teammates {
   color: #aaa;
@@ -165,12 +150,21 @@ body {
   border-color: var(--primary);
 }
 
-.player-card.empty-slot .player-name {
-  color: #888;
+/* 警徽样式 */
+.player-card .sheriff-badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
+  animation: sheriffPulse 2s infinite;
+  z-index: 10;
 }
 
-.player-card.empty-slot .player-status {
-  color: var(--primary);
+@keyframes sheriffPulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.1); }
 }
 
 .player-position {
@@ -243,6 +237,13 @@ body {
   font-size: 13px;
 }
 
+.message.system.opening .message-content {
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+}
+
 .message.system.death .message-content {
   background: rgba(231, 76, 60, 0.2);
   color: #e74c3c;
@@ -279,6 +280,12 @@ body {
 
 .message.wolf-channel .message-content {
   background: rgba(142, 68, 173, 0.3);
+  border-left: 3px solid var(--wolf);
+}
+
+/* 狼人刀人投票结果 */
+.message.wolf-vote-result .message-content {
+  background: rgba(142, 68, 173, 0.2);
   border-left: 3px solid var(--wolf);
 }
 
@@ -414,11 +421,21 @@ body {
   color: #fff;
 }
 
-.vote-btn:active, .skill-btn:active {
+.vote-btn.skip, .skill-btn.skip {
   transform: scale(0.95);
 }
 
-/* 女巫技能按钮 */
+.vote-btn.wolf-target, .skill-btn.wolf-target {
+  background: rgba(231, 76, 60, 0.3);
+  border-color: #e74c3c;
+  color: #ff6b6b;
+}
+
+.vote-btn.wolf-target:hover, .skill-btn.wolf-target:hover {
+  background: #e74c3c;
+  color: #fff;
+}
+
 .skill-btn.heal {
   background: rgba(39, 174, 96, 0.3);
   border-color: var(--success);
@@ -444,8 +461,23 @@ body {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-.skill-btn.skip:hover {
-  background: rgba(255, 255, 255, 0.2);
+/* 选中状态 */
+.skill-btn.selected {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #fff !important;
+  box-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
+}
+
+/* 禁用状态 */
+.skill-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.skill-btn:disabled:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .poison-section {
@@ -542,63 +574,6 @@ body {
   transform: scale(0.95);
 }
 
-/* 角色面板 */
-#role-name {
-  font-size: 32px;
-  font-weight: bold;
-  margin-bottom: 12px;
-}
-
-#role-desc {
-  font-size: 14px;
-  color: #aaa;
-  text-align: center;
-  max-width: 280px;
-  line-height: 1.5;
-}
-
-#teammates {
-  margin-top: 12px;
-  font-size: 14px;
-  color: var(--wolf);
-}
-
-#confirm-role-btn {
-  margin-top: 24px;
-  padding: 12px 40px;
-  background: var(--success);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-}
-
-/* 游戏结束面板 */
-#winner {
-  font-size: 20px;
-  margin-bottom: 16px;
-}
-
-#final-roles {
-  font-size: 14px;
-  color: #aaa;
-  text-align: center;
-  max-width: 300px;
-  line-height: 1.6;
-}
-
-#restart-btn {
-  margin-top: 24px;
-  padding: 12px 40px;
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-}
-
 /* 响应式 */
 @media (max-width: 400px) {
   #players-grid {
@@ -652,4 +627,108 @@ body {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+/* 板子选择器 */
+.preset-option {
+  padding: 12px;
+  margin-bottom: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  max-width: 300px;
+}
+
+.preset-option:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.preset-option.selected {
+  border-color: #4a9eff;
+  background: rgba(74, 158, 255, 0.1);
+}
+
+.preset-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.preset-desc {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.preset-roles {
+  font-size: 13px;
+  color: #ccc;
+  margin-bottom: 4px;
+}
+
+.preset-rule {
+  font-size: 12px;
+  color: #999;
+  padding-left: 4px;
+}
+
+#preset-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 300px;
+}
+
+#preset-locked {
+  font-size: 14px;
+  color: #4a9eff;
+  padding: 10px 0;
+}
+
+/* 板子信息面板 */
+#preset-panel {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  width: 100%;
+  max-width: 600px;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.92);
+  padding: 16px;
+  z-index: 150;
+  transition: transform 0.3s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+#preset-panel.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+#preset-panel-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+#preset-panel-roles {
+  font-size: 14px;
+  color: #ccc;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#preset-panel-rules {
+  font-size: 13px;
+  color: #999;
+}
+
+#preset-panel-rules div {
+  padding: 2px 0;
 }
