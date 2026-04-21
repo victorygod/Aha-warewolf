@@ -110,51 +110,63 @@ public/
 
 ### 3.2 复盘提示词结构
 
-每个角色的复盘提示词包含以下部分：
+复盘提示词使用 `buildMessages` 的结构，但**不使用压缩**，阶段提示词替换为复盘提示词。
 
-```markdown
-## 复盘提示词
+#### 消息结构（与 buildMessages 一致）
 
+```javascript
+{
+  systemPrompt,    // 系统提示词（角色信息、规则、攻略）
+  historyText,     // 消息历史（formatMessageHistory格式化，不使用压缩）
+  phasePrompt,     // 替换为复盘提示词
+  lastMessages: [
+    { role: 'system', content: `${systemPrompt}\n\n${historyText}` },
+    { role: 'user', content: phasePrompt }  // 这里是复盘提示词
+  ]
+}
+```
+
+#### 复盘提示词内容
+
+```
 你是狼人杀游戏分析师。请分析本局游戏中你的表现，并给出策略改进建议。
 
-### 你的身份信息
-- 位置：5号位
-- 角色：预言家
-- 阵营：好人
-
-### 游戏结果
+## 游戏结果
 - 获胜阵营：狼人阵营
 - 游戏天数：4天
 
-### 你的死亡信息
+## 你的死亡信息
+- 存活状态：死亡
 - 死亡时机：第2天
 - 死亡原因：被放逐
-- 遗言内容：...
 
-### 完整游戏过程
-[非压缩的完整消息历史，按时间顺序排列]
+## 游戏结算信息
+| 位置 | 玩家 | 角色 | 阵营 | 存活 | 死亡原因 |
+|------|------|------|------|------|----------|
+| 1号 | 玩家1 | 预言家 | 好人 | 否 | 被放逐 |
+...
 
-### 游戏结算信息
-[每个玩家的身份、死因、存活状态]
-
-### 复盘要求
+## 复盘要求
 请分析以下内容：
 1. 你在本局游戏中的决策是否正确？
 2. 你的发言、投票、验人策略有哪些可以改进的地方？
 3. 根据本局游戏的具体情况，角色攻略文档中应该补充或修改哪些内容？
 
-请以以下格式返回：
-```json
+请以JSON格式返回：
 {
   "analysis": "你的分析（200字以内）",
   "improvements": [
-    {"category": "发言策略", "content": "具体改进建议"},
-    {"category": "投票策略", "content": "具体改进建议"},
-    {"category": "攻略更新", "content": "建议更新的攻略内容"}
+    {"category": "分类", "content": "具体改进建议"}
   ]
 }
 ```
-```
+
+#### 关键点
+
+1. **使用 formatMessageHistory**：不经过压缩，直接格式化完整消息历史
+2. **systemPrompt 包含攻略**：通过 `buildSystemPrompt` 加载当前的角色攻略文档
+3. **游戏结算信息**：通过 `game.getGameOverInfo()` 获取完整结算信息
+4. **复盘提示词作为 phasePrompt**：替换原有的阶段提示词
 
 ### 3.3 复盘阶段定义 (engine/phase.js)
 
@@ -242,9 +254,9 @@ async function reviewPlayer(player, game, gameOverInfo) {
     // 构建复盘提示词
     const prompt = buildReviewPrompt(player, game, gameOverInfo);
 
-    // 调用 LLM 获取复盘结果
+    // 调用 LLM 获取复盘结果（传入 lastMessages 结构）
     const llmAgent = player.controller.llmAgent;
-    const response = await llmAgent.callReviewAPI(prompt);
+    const response = await llmAgent.callReviewAPI(prompt);  // prompt 包含 { systemPrompt, historyText, lastMessages }
 
     // 解析 LLM 响应
     const result = parseReviewResponse(response);
@@ -264,50 +276,52 @@ async function reviewPlayer(player, game, gameOverInfo) {
 
 /**
  * 构建复盘提示词
+ * 使用 buildMessages 的结构，但不使用压缩，阶段提示词替换为复盘提示词
  */
 function buildReviewPrompt(player, game, gameOverInfo) {
-  const roleId = player.role.id;
-  const roleName = player.role.name;
-  const position = game.players.findIndex(p => p.id === player.id) + 1;
+  // 导入 buildMessages
+  const { buildMessages, formatMessageHistory } = require('../ai/context');
 
-  // 获取非压缩的完整消息历史
-  const messages = game.message.getAllMessages()
-    .filter(m => m.visibility === 'public' ||
-                 m.sender === player.id ||
-                 (m.receiver === player.id));
+  // 构建决策上下文（与正常游戏决策相同，但 phase 设为 'review'）
+  const context = {
+    phase: 'review',
+    players: game.players,
+    alivePlayers: game.players.filter(p => p.alive),
+    messages: game.message.getAllMessages(),  // 完整消息历史，不压缩
+    self: player,
+    dayCount: game.dayCount,
+    werewolfTarget: game.werewolfTarget,
+    witchPotion: {
+      heal: player.state?.witchHeal > 0,
+      poison: player.state?.witchPoison > 0
+    }
+  };
 
-  // 格式化消息历史
-  const messageHistory = formatMessageHistory(messages, game.players, player);
+  // 使用 buildMessages 构建上下文（不使用压缩）
+  const { systemPrompt, historyText, lastMessages } = buildMessages(player, game, context, {
+    useCompression: false  // 关键：不使用压缩，使用完整消息历史
+  });
 
-  // 构建玩家结算信息
+  // 获取玩家结算信息
   const playerInfo = gameOverInfo.players.find(p => p.id === player.id);
 
-  return `你是狼人杀游戏分析师。请分析本局游戏中你的表现，并给出策略改进建议。
-
-## 你的身份信息
-- 位置：${position}号位
-- 角色：${roleName}
-- 阵营：${player.role.camp === 'good' ? '好人' : player.role.camp === 'wolf' ? '狼人' : '第三方'}
-
-### 游戏结果
+  // 构建复盘阶段提示词
+  const reviewPrompt = `## 游戏结果
 - 获胜阵营：${gameOverInfo.winnerText}
 - 游戏天数：${gameOverInfo.dayCount}天
 
-### 你的死亡信息
+## 你的死亡信息
 - 存活状态：${playerInfo.alive ? '存活' : '死亡'}
 - 死亡时机：${playerInfo.alive ? '存活' : '第' + playerInfo.deathDay + '天'}
 - 死亡原因：${playerInfo.deathReason || '无'}
 
-### 完整游戏过程
-${messageHistory}
-
-### 游戏结算信息
+## 游戏结算信息
 ${formatGameOverInfo(gameOverInfo)}
 
-### 复盘要求
+## 复盘要求
 请分析以下内容：
 1. 你在本局游戏中的决策是否正确？
-2. 你的发言、投票策略有哪些可以改进的地方？
+2. 你的发言、投票、验人策略有哪些可以改进的地方？
 3. 根据本局游戏的具体情况，角色攻略文档中应该补充或修改哪些内容？
 
 请以JSON格式返回：
@@ -466,15 +480,17 @@ class LLMAgent {
 
   /**
    * 调用复盘 API
-   * @param {string} prompt - 复盘提示词
+   * @param {Object} reviewData - 复盘数据，包含 lastMessages
    * @returns {Promise<string>} LLM 响应
    */
-  async callReviewAPI(prompt) {
+  async callReviewAPI(reviewData) {
+    const { lastMessages } = reviewData;
     const apiConfig = this.getApiConfig();
     if (!apiConfig) {
       throw new Error('API 配置不可用');
     }
 
+    // 使用 buildMessages 返回的 lastMessages 结构
     const response = await fetch(`${apiConfig.base_url}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -483,10 +499,7 @@ class LLMAgent {
       },
       body: JSON.stringify({
         model: apiConfig.model,
-        messages: [
-          { role: 'system', content: '你是一个专业的狼人杀游戏分析师，擅长分析游戏策略。' },
-          { role: 'user', content: prompt }
-        ],
+        messages: lastMessages,  // 直接使用 buildMessages 返回的消息数组
         temperature: 0.7
       })
     });
