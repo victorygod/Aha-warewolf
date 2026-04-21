@@ -30,8 +30,7 @@ const {
   formatWolfVoteResult,
   formatVoteResult,
   formatSheriffCandidates,
-  getPlayerPosition,
-  buildFullContext
+  getPlayerPosition
 } = require('../ai/context');
 const { buildSystemPrompt, getPhasePrompt } = require('../ai/prompts');
 
@@ -187,7 +186,7 @@ test('8. 技能动作优先使用 metadata - 预言家查验', () => {
     metadata: { targetId: 3, result: 'wolf' }
   };
   const result = formatAction(msg, mockPlayers);
-  assert.strictEqual(result, '[预言家]1号小明:3号小刚=狼人');
+  assert.strictEqual(result, '[私密][预言家]1号小明:3号小刚=狼人');
 });
 
 test('9. 技能动作无 metadata 时使用文本匹配 - 守卫守护', () => {
@@ -197,7 +196,7 @@ test('9. 技能动作无 metadata 时使用文本匹配 - 守卫守护', () => {
     playerId: 2
   };
   const result = formatAction(msg, mockPlayers);
-  assert.strictEqual(result, '[守卫]2号小红:守护2号小红');
+  assert.strictEqual(result, '[私密][守卫]2号小红:守护2号小红');
 });
 
 test('10. 警长竞选使用 metadata', () => {
@@ -234,13 +233,13 @@ test('12. 遗言格式：[遗言]3号小刚:我是狼', () => {
 test('13. 技能动作 - 女巫救人', () => {
   const msg = { type: 'action', content: '你使用解药救了 5号小华', playerId: 5 };
   const result = formatAction(msg, mockPlayers);
-  assert.strictEqual(result, '[女巫]5号小华:救5号小华');
+  assert.strictEqual(result, '[私密][女巫]5号小华:救5号小华');
 });
 
 test('14. 技能动作 - 女巫毒人', () => {
   const msg = { type: 'action', content: '你毒杀了 3号小刚', playerId: 5 };
   const result = formatAction(msg, mockPlayers);
-  assert.strictEqual(result, '[女巫]5号小华:毒3号小刚');
+  assert.strictEqual(result, '[私密][女巫]5号小华:毒3号小刚');
 });
 
 test('15. 技能动作 - 猎人开枪', () => {
@@ -369,8 +368,8 @@ test('21. 完整夜晚流程', () => {
   assert(result.includes('3号小刚:刀5号吧'), '狼人发言');
   assert(result.includes('票型：'), '票型');
   assert(result.includes('最终击杀：5号小华'), '最终击杀');
-  assert(result.includes('[女巫]5号小华:救5号小华'), '女巫救人');
-  assert(result.includes('[预言家]1号小明:3号小刚=狼人'), '预言家查验');
+  assert(result.includes('[私密][女巫]5号小华:救5号小华'), '女巫救人');
+  assert(result.includes('[私密][预言家]1号小明:3号小刚=狼人'), '预言家查验');
 
   // 不应该出现的标题
   assert(!result.includes('狼人投票'), '不应出现狼人投票标题');
@@ -424,33 +423,78 @@ test('23. getPlayerPosition 正确获取位置', () => {
   assert.strictEqual(getPlayerPosition(null, mockPlayers), '?');
 });
 
-// ========== buildFullContext 测试 ==========
+// ========== 攻略加载测试 ==========
 
-console.log('\n=== buildFullContext 测试 ===\n');
+console.log('\n=== 攻略加载测试 ===\n');
 
-test('24. buildFullContext 返回完整上下文', () => {
-  const player = mockPlayers[0];
-  const game = { players: mockPlayers };
-  const context = {
-    phase: 'day_discuss',
-    messages: [
-      { type: 'phase_start', content: '白天发言', phase: 'day_discuss' },
-      { type: 'speech', playerId: 2, playerName: '小红', content: '我是好人' }
-    ],
-    alivePlayers: mockPlayers
+test('24. buildSystemPrompt 加载角色攻略', () => {
+  const player = { id: 5, name: '小华', role: { id: 'witch', camp: 'good' }, soul: '你是一个优秀的玩家。' };
+  const game = {
+    presetId: '12-hunter-idiot',
+    preset: { ruleDescriptions: ['女巫仅首夜可自救', '猎人被毒不能开枪'] },
+    players: mockPlayers
   };
 
-  const result = buildFullContext(player, game, context);
+  const prompt = buildSystemPrompt(player, game);
 
-  assert(result.systemPrompt, '应包含系统提示词');
-  assert(result.historyText, '应包含消息历史');
-  assert(result.phasePrompt, '应包含阶段提示词');
-  assert(result.fullText, '应包含完整文本');
+  // 验证基本内容
+  assert(prompt.includes('名字:小华'), '应包含名字');
+  assert(prompt.includes('位置:5号位'), '应包含位置');
+  assert(prompt.includes('角色:女巫'), '应包含角色');
+  assert(prompt.includes('规则:女巫仅首夜可自救|猎人被毒不能开枪'), '应包含规则');
+  assert(prompt.includes('【角色攻略】'), '应包含攻略标题');
+
+  // 验证攻略内容加载成功
+  assert(prompt.includes('女巫策略'), '应包含女巫策略标题');
+  assert(prompt.includes('自救'), '应包含自救策略');
 });
 
-test('25. 空消息历史返回空字符串', () => {
-  const result = formatMessageHistory([], mockPlayers);
-  assert.strictEqual(result, '');
+test('25. buildSystemPrompt 无攻略时正常返回', () => {
+  // 丘比特在 12-hunter-idiot 板子没有攻略文件
+  const player = { id: 8, name: '小强', role: { id: 'cupid', camp: 'neutral' }, soul: '测试' };
+  const game = {
+    presetId: '12-hunter-idiot',
+    preset: { ruleDescriptions: ['测试规则'] },
+    players: mockPlayers
+  };
+
+  const prompt = buildSystemPrompt(player, game);
+
+  // 验证基本内容
+  assert(prompt.includes('名字:小强'), '应包含名字');
+  assert(prompt.includes('角色:丘比特'), '应包含角色');
+  assert(prompt.includes('规则:测试规则'), '应包含规则');
+
+  // 攻略为空时，不应包含攻略标题后的空行内容
+  assert(!prompt.includes('【角色攻略】\n\n'), '攻略为空时不应有空标题');
+});
+
+test('26. buildSystemPrompt 9人标准局狼人', () => {
+  const player = { id: 3, name: '小刚', role: { id: 'werewolf', camp: 'wolf' }, soul: '测试' };
+  const game = {
+    presetId: '9-standard',
+    preset: { ruleDescriptions: ['狼人屠边获胜'] },
+    players: mockPlayers
+  };
+
+  const prompt = buildSystemPrompt(player, game);
+
+  assert(prompt.includes('狼人策略'), '应包含狼人策略');
+  assert(prompt.includes('刀人'), '应包含刀人策略');
+});
+
+test('27. buildSystemPrompt 12-guard-cupid 守卫', () => {
+  const player = { id: 6, name: '小军', role: { id: 'guard', camp: 'good' }, soul: '测试' };
+  const game = {
+    presetId: '12-guard-cupid',
+    preset: { ruleDescriptions: ['守卫不能连守'] },
+    players: mockPlayers
+  };
+
+  const prompt = buildSystemPrompt(player, game);
+
+  assert(prompt.includes('守卫策略'), '应包含守卫策略');
+  assert(prompt.includes('守护优先级'), '应包含守护优先级');
 });
 
 // ========== 输出测试结果 ==========

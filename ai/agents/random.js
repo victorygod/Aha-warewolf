@@ -4,7 +4,7 @@
  */
 
 const { buildSystemPrompt, getPhasePrompt } = require('../prompts');
-const { formatMessageHistory } = require('../context');
+const { formatMessageHistory, buildMessages } = require('../context');
 const { createLogger } = require('../../utils/logger');
 
 // 创建日志实例（延迟初始化，只使用backend.log）
@@ -274,7 +274,7 @@ class RandomAgent {
     return { type: 'target', target: String(target.id) };
   }
 
-  // 记录决策上下文日志
+  // 记录决策上下文日志（使用统一的 buildMessages）
   logContext(context) {
     const player = this.game?.players?.find(p => p.id === this.playerId);
     if (!player) {
@@ -282,37 +282,9 @@ class RandomAgent {
       return;
     }
 
-    // 构建系统提示词（与 LLM 一致）
-    const systemPrompt = buildSystemPrompt(player, this.game);
+    // 使用统一的 buildMessages（不使用压缩），仅仅为了buildMessages内部的debug日志
+    const result = buildMessages(player, this.game, context, { useCompression: false });
 
-    // 构建 getPhasePrompt 需要的 context
-    const promptContext = {
-      game: this.game,
-      alivePlayers: context.alivePlayers,
-      werewolfTarget: context.werewolfTarget,
-      witchPotion: {
-        heal: context.self?.witchHeal > 0,
-        poison: context.self?.witchPoison > 0
-      }
-    };
-
-    // 使用 prompts.js 中的 getPhasePrompt
-    const phasePrompt = getPhasePrompt(context.phase, promptContext);
-
-    // 使用 context.js 中的 formatMessageHistory（传入当前玩家以判断是否显示狼人子标题）
-    const currentPlayer = this.game?.players?.find(p => p.id === this.playerId);
-    const historyText = formatMessageHistory(context.messages, this.game?.players || [], currentPlayer) || '无';
-
-    // 组合完整上下文
-    const fullContext = `
-${systemPrompt}
-
-${historyText}
-
-${phasePrompt}
-`;
-
-    getLogger().debug(fullContext);
   }
 }
 

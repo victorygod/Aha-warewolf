@@ -183,7 +183,7 @@ class GameEngine extends EventEmitter {
           werewolfTarget,
           healAvailable: extraData?.healAvailable ?? (player.state?.heal > 0),
           poisonAvailable: extraData?.poisonAvailable ?? (player.state?.poison > 0),
-          canSelfHeal: extraData?.canSelfHeal ?? (this.nightCount === 1),
+          canSelfHeal: extraData?.canSelfHeal ?? (this.nightCount === 0),
           poisonTargets
         };
       }

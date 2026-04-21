@@ -5,7 +5,16 @@
  * 格式规范见 docs/prompt_format.md
  */
 
-const { buildSystemPrompt, getPhasePrompt } = require('./prompts');
+const { buildSystemPrompt, getPhasePrompt, formatWithCompression } = require('./prompts');
+const { createLogger } = require('../utils/logger');
+
+let backendLogger = null;
+function getLogger() {
+  if (!backendLogger) {
+    backendLogger = global.backendLogger || createLogger('backend.log');
+  }
+  return backendLogger;
+}
 
 // 夜晚阶段
 const NIGHT_PHASES = ['cupid', 'guard', 'night_werewolf_discuss', 'night_werewolf_vote', 'witch', 'seer'];
@@ -427,50 +436,47 @@ function getPlayerPosition(playerId, players) {
 }
 
 /**
- * 构建完整上下文
+ * 构建消息（供 LLM 和 Random Agent 共用）
  * @param {Object} player - 当前玩家
  * @param {Object} game - 游戏实例
  * @param {Object} context - 决策上下文
- * @returns {Object} { systemPrompt, historyText, phasePrompt, fullText }
+ * @param {Object} options - 选项 { useCompression, compressedSummary, compressedAfterMessageId }
+ * @returns {Object} { systemPrompt, historyText, phasePrompt, lastMessages }
  */
-function buildFullContext(player, game, context) {
-  // 系统提示词
+function buildMessages(player, game, context, options = {}) {
+  const { useCompression = false, compressedSummary = null, compressedAfterMessageId = 0 } = options;
+
+  let historyText;
+  if (useCompression && compressedSummary) {
+    const newMsgs = (context.messages || []).filter(m => m.id > compressedAfterMessageId);
+    historyText = formatWithCompression(compressedSummary, newMsgs, game.players);
+  } else {
+    historyText = formatMessageHistory(context.messages, game.players, player);
+  }
+
+  const phasePrompt = getPhasePrompt(context.phase, context);
+
   const systemPrompt = buildSystemPrompt(player, game);
+  const lastMessages = [
+    { role: 'system', content: `${systemPrompt}\n\n${historyText}` },
+    { role: 'user', content: phasePrompt }
+  ];
 
-  // 消息历史
-  const historyText = formatMessageHistory(context.messages, game.players, player);
+  // 输出完整上下文日志（用于调试）
+  getLogger().debug(`[Agent] playerId=${player.id} 完整上下文:`);
+  getLogger().debug(JSON.stringify(lastMessages, null, 2));
 
-  // 阶段提示词
-  const promptContext = {
-    game: game,
-    alivePlayers: context.alivePlayers,
-    werewolfTarget: context.werewolfTarget,
-    witchPotion: {
-      heal: context.self?.witchHeal > 0,
-      poison: context.self?.witchPoison > 0
-    }
-  };
-  const phasePrompt = getPhasePrompt(context.phase, promptContext);
-
-  // 完整文本
-  const fullText = `${systemPrompt}\n\n${historyText}\n\n${phasePrompt}`;
-
-  return {
-    systemPrompt,
-    historyText,
-    phasePrompt,
-    fullText
-  };
+  return { systemPrompt, historyText, phasePrompt, lastMessages };
 }
 
 module.exports = {
   formatMessageHistory,
-  buildFullContext,
   formatSpeech,
   formatDeath,
   formatAction,
   formatWolfVoteResult,
   formatVoteResult,
   formatSheriffCandidates,
-  getPlayerPosition
+  getPlayerPosition,
+  buildMessages
 };

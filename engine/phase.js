@@ -121,7 +121,7 @@ const PHASE_FLOW = [
         werewolfTarget: game.werewolfTarget,
         healAvailable: witch.state?.heal > 0,
         poisonAvailable: witch.state?.poison > 0,
-        canSelfHeal: (game.effectiveRules?.witch?.canSelfHeal ?? true) && game.nightCount === 1
+        canSelfHeal: (game.effectiveRules?.witch?.canSelfHeal ?? true) && game.nightCount === 0
       };
       await game.callSkill(witch.id, 'witch', extraData);
     }
