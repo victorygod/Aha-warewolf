@@ -295,6 +295,11 @@ class Controller {
     this.playerName = name;
   }
 
+  // 改 emoji
+  sendChangeEmoji(emoji) {
+    this.send('change_emoji', { emoji });
+  }
+
   // 修改 Debug 角色
   sendChangeDebugRole(role) {
     this.send('change_debug_role', { role });

@@ -183,6 +183,9 @@ class ServerCore {
       case 'change_name':
         this.handleChangeName(ws, msg);
         break;
+      case 'change_emoji':
+        this.handleChangeEmoji(ws, msg);
+        break;
       case 'change_debug_role':
         this.handleChangeDebugRole(ws, msg);
         break;
@@ -282,6 +285,7 @@ class ServerCore {
     this.game.players.push({
       id: playerId,
       name,
+      emoji: msg.emoji || '🎭',
       alive: true,
       isAI: false,
       ready: false,
@@ -327,6 +331,7 @@ class ServerCore {
     this.game.players.push({
       id: aiPlayerId,
       name: profiles[0].name,
+      emoji: '🎭',
       profileName: profiles[0].profileName,
       profile: profiles[0].profile,
       background: profiles[0].background,
@@ -584,6 +589,19 @@ class ServerCore {
     if (player) {
       player.name = newName;
       info.name = newName;
+      if (msg.emoji) player.emoji = msg.emoji;
+      this.broadcastState();
+    }
+  }
+
+  handleChangeEmoji(ws, msg) {
+    const info = this.clients.get(ws);
+    if (!info || info.isSpectator || !this.game) return;
+    if (this.game.phaseManager && this.game.phaseManager.running) return;
+
+    const player = this.game.players.find(p => p.id === info.playerId);
+    if (player && !player.ready) {
+      player.emoji = msg.emoji || '🎭';
       this.broadcastState();
     }
   }
@@ -663,6 +681,7 @@ class ServerCore {
       this.game.players.push({
         id: playerId,
         name: spectator.name,
+        emoji: '🎭',
         alive: true,
         isAI: false,
         ready: false,

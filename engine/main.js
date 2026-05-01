@@ -666,6 +666,7 @@ class GameEngine extends EventEmitter {
       players: this.players.map(p => ({
         id: p.id,
         name: p.name,
+        emoji: p.emoji || '🎭',
         alive: p.alive,
         isAI: p.isAI,
         profileName: p.profileName || null,

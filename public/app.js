@@ -1058,21 +1058,17 @@ function renderWaitingRoom(state) {
       ? `/profiles/${player.profileName}/${player.profile?.icon || 'icon.webp'}`
       : '/assets/masks/fools_mask.webp';
 
-    let statusText = player.ready ? '✓ 已准备' : '未准备';
+    let statusText = player.ready ? '✓ 已准备' : '';
     if (player.isAI) statusText = player.ready ? '✓ AI已准备' : 'AI';
+
+    const debugRoleSelect = SERVER_DEBUG_MODE && state.preset?.roles && isSelf && !player.ready
+      ? buildDebugRoleOptionValues(state.preset.roles, player.debugRole)
+      : '';
 
     let actionsHtml = '';
     if (state.phase === 'waiting') {
-      const debugRoleOptions = SERVER_DEBUG_MODE && state.preset?.roles
-        ? buildDebugRoleOptions(state.preset.roles, player.debugRole)
-        : '';
-
       if (isSelf && !player.ready) {
         actionsHtml = `
-          <div class="waiting-card-row">
-            <input class="waiting-name-input" type="text" value="${player.name}" maxlength="10" data-action="rename">
-            ${debugRoleOptions || ''}
-          </div>
           <div class="waiting-card-row">
             <button class="waiting-btn ready-btn" data-action="ready">准备</button>
             <button class="waiting-btn spectate-btn" data-action="spectate">去观战</button>
@@ -1090,18 +1086,23 @@ function renderWaitingRoom(state) {
             <button class="waiting-btn kick-btn" data-action="kick" data-player-id="${player.id}">踢出</button>
           </div>
         `;
-      } else if (!player.isAI && !player.ready) {
-        statusText = '未准备';
       }
     }
 
+    const nameRow = `<div class="waiting-card-name-row">
+          <span class="waiting-card-name${isSelf && !player.ready ? ' editable' : ''}" ${isSelf && !player.ready ? 'contenteditable="true"' : ''} data-field="name">${player.name}</span>
+          ${isSelf && !player.ready ? '<span class="waiting-card-edit-hint">✏</span>' : ''}
+          ${debugRoleSelect ? `<select class="debug-role-select" data-action="debug-role">${debugRoleSelect}</select>` : ''}
+        </div>`;
+    const statusRow = statusText ? `<div class="waiting-card-status">${statusText}</div>` : '';
+
     card.innerHTML = `
       <img class="player-avatar" src="${avatarSrc}" alt="${player.name}" onerror="this.src='/assets/masks/fools_mask.webp'">
-      <div class="waiting-card-info">
-        <div class="waiting-card-name">${position}号 ${player.name}</div>
-        <div class="waiting-card-status">${statusText}</div>
+      <div class="waiting-card-body">
+        ${nameRow}
+        ${statusRow}
+        ${actionsHtml}
       </div>
-      <div class="waiting-card-actions">${actionsHtml}</div>
     `;
 
     // AI 玩家点击头像弹出详情
@@ -1146,23 +1147,11 @@ function renderWaitingRoom(state) {
         });
       }
 
-      // 改名输入框
-      const nameInput = card.querySelector('.waiting-name-input');
-      if (nameInput) {
-        nameInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            const newName = nameInput.value.trim();
-            if (newName && newName !== player.name) {
-              controller.sendChangeName(newName);
-              const url = new URL(window.location);
-              url.searchParams.set('name', newName);
-              window.history.replaceState({}, '', url);
-            }
-            nameInput.blur();
-          }
-        });
-        nameInput.addEventListener('blur', () => {
-          const newName = nameInput.value.trim();
+      // 改名（contenteditable）
+      const nameEl = card.querySelector('.waiting-card-name.editable');
+      if (nameEl) {
+        nameEl.addEventListener('blur', () => {
+          const newName = nameEl.textContent.trim();
           if (newName && newName !== player.name) {
             controller.sendChangeName(newName);
             const url = new URL(window.location);
@@ -1170,7 +1159,13 @@ function renderWaitingRoom(state) {
             window.history.replaceState({}, '', url);
           }
         });
-        nameInput.addEventListener('click', (e) => e.stopPropagation());
+        nameEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            nameEl.blur();
+          }
+        });
+        nameEl.addEventListener('click', (e) => e.stopPropagation());
       }
     }
 
@@ -1207,21 +1202,8 @@ function renderWaitingRoom(state) {
     });
     spectatorHtml += '</div>';
 
-    // 如果自己是观战者，显示视角切换和加入游戏按钮
+    // 如果自己是观战者，显示加入游戏按钮
     if (isSpectator) {
-      spectatorHtml += '<div class="spectator-view-btns">';
-      const views = [
-        { key: 'villager', label: '村民视角' },
-        { key: 'werewolf', label: '狼人视角' },
-        { key: 'god', label: '上帝视角' }
-      ];
-      views.forEach(v => {
-        const active = controller.spectatorView === v.key ? ' active' : '';
-        spectatorHtml += `<button class="view-btn${active}" data-view="${v.key}">${v.label}</button>`;
-      });
-      spectatorHtml += '</div>';
-
-      // 加入游戏按钮（有空位时）
       const currentCount = state.players?.length || 0;
       if (currentCount < total) {
         spectatorHtml += '<div style="margin-top:10px;"><button class="waiting-btn join-btn" data-action="join-game">加入游戏</button></div>';
@@ -1229,19 +1211,6 @@ function renderWaitingRoom(state) {
     }
 
     elements.waitingSpectators.innerHTML = spectatorHtml;
-
-    // 绑定观战者区域的按钮事件
-    elements.waitingSpectators.querySelectorAll('.view-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const view = btn.dataset.view;
-        controller.spectatorView = view;
-        controller.sendSwitchView(view);
-        // 更新观战者视角栏按钮
-        document.querySelectorAll('#spectator-view-bar .view-btn').forEach(b => b.classList.remove('active'));
-        document.querySelector(`#spectator-view-bar .view-btn[data-view="${view}"]`)?.classList.add('active');
-        renderWaitingRoom(state);
-      });
-    });
 
     const joinBtn = elements.waitingSpectators.querySelector('[data-action="join-game"]');
     if (joinBtn) {
