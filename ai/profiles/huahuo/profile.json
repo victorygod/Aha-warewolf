@@ -3,5 +3,7 @@
   "englishName": "Sparkle",
   "faction": "假面愚者",
   "path": "同谐",
-  "element": "量子"
+  "element": "量子",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

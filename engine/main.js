@@ -668,7 +668,11 @@ class GameEngine extends EventEmitter {
         name: p.name,
         alive: p.alive,
         isAI: p.isAI,
+        profileName: p.profileName || null,
+        profile: p.isAI && p.profile ? p.profile : null,
+        ready: p.ready !== undefined ? p.ready : (p.isAI ? true : false),
         role: p.role,
+        debugRole: p.debugRole || null,
         // 额外状态信息
         deathReason: p.deathReason,
         revealed: p.state?.revealed,
@@ -734,7 +738,8 @@ class GameEngine extends EventEmitter {
         // 猎人是否可以开枪
         hunterCanShoot: player.state?.canShoot,
         // 白痴是否已翻牌
-        idiotRevealed: player.state?.revealed
+        idiotRevealed: player.state?.revealed,
+        ready: player.ready !== undefined ? player.ready : (player.isAI ? true : false)
       };
       state.messages = this.message.getVisibleTo(player, this);
     }

@@ -22,6 +22,12 @@ class Controller {
 
     // 行动请求回调
     this.onActionRequired = null;
+
+    // 是否是观战者
+    this.isSpectator = false;
+
+    // 观战者视角
+    this.spectatorView = 'villager';
   }
 
   // 连接 WebSocket
@@ -85,6 +91,18 @@ class Controller {
         this.cachedState = msg.data;
         if (msg.data?.self) {
           this.playerId = msg.data.self.id;
+          this.isSpectator = false;
+        } else {
+          this.playerId = null;
+        }
+        if (msg.data?.spectators) {
+          const me = msg.data.spectators.find(s => s.name === this.playerName);
+          if (me) {
+            this.isSpectator = true;
+            this.spectatorView = me.view || 'villager';
+          } else if (!msg.data?.self) {
+            this.isSpectator = false;
+          }
         }
 
         // 更新消息历史
@@ -148,7 +166,13 @@ class Controller {
         break;
 
       default:
-        if (window.frontendLogger) {
+        if (msg.type === 'spectator_assigned') {
+          this.isSpectator = true;
+          this.spectatorView = msg.view || 'villager';
+        } else if (msg.type === 'player_assigned') {
+          this.isSpectator = false;
+          this.playerId = msg.playerId;
+        } else if (window.frontendLogger) {
           window.frontendLogger.warn(`[WS] 未知消息类型: ${msg.type}`);
         }
     }
@@ -244,17 +268,58 @@ class Controller {
     return { success: true };
   }
 
-  // 重置游戏
+  // 踢出 AI
+  async removeAI(playerId) {
+    this.send('remove_ai', { playerId });
+    return { success: true };
+  }
+
+  // 准备
+  sendReady() {
+    this.send('ready');
+  }
+
+  // 取消准备
+  sendUnready() {
+    this.send('unready');
+  }
+
+  // 切换板子
+  sendChangePreset(presetId) {
+    this.send('change_preset', { presetId });
+  }
+
+  // 改名
+  sendChangeName(name) {
+    this.send('change_name', { name });
+    this.playerName = name;
+  }
+
+  // 修改 Debug 角色
+  sendChangeDebugRole(role) {
+    this.send('change_debug_role', { role });
+  }
+
+  // 加入观战
+  sendSpectate() {
+    this.send('spectate');
+  }
+
+  // 切换视角
+  sendSwitchView(view) {
+    this.send('switch_view', { view });
+  }
+
+  // 切换身份（玩家↔观战者）
+  sendSwitchRole(role) {
+    this.send('switch_role', { role });
+  }
+
+  // 重置游戏（返回房间）
   async reset() {
     this.send('reset');
-    this.playerId = null;
-    this.playerName = null;
     this.messageHistory = [];
     this.cachedState = null;
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
     return { success: true };
   }
 
@@ -267,6 +332,30 @@ class Controller {
   getMyPlayer() {
     if (!this.cachedState?.players || !this.playerName) return null;
     return this.cachedState.players.find(p => p.name === this.playerName && !p.isAI);
+  }
+
+  // 获取过滤后的消息（观战者根据视角过滤）
+  getFilteredMessages() {
+    const messages = this.messageHistory;
+    if (!this.isSpectator) return messages;
+
+    const view = this.spectatorView;
+    if (view === 'god') return messages;
+
+    return messages.filter(msg => {
+      if (msg.visibility === 'public') return true;
+      if (view === 'werewolf' && msg.visibility === 'camp') {
+        // 狼人视角：显示狼人阵营消息
+        // 需要判断发送者是否是狼人
+        const state = this.cachedState;
+        if (state?.players) {
+          const sender = state.players.find(p => p.id === msg.playerId);
+          if (sender?.role?.camp === 'wolf' || sender?.role?.id === 'werewolf') return true;
+        }
+        return false;
+      }
+      return false;
+    });
   }
 }
 

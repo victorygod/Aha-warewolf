@@ -1,7 +1,9 @@
 {
-  "name": "银狼",
-  "englishName": "Silver Wolf",
+  "name": "银狼LV.999",
+  "englishName": "Silver Wolf LV.999",
   "faction": "星核猎手",
-  "path": "虚无",
-  "element": "量子"
+  "path": "欢愉",
+  "element": "虚数",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

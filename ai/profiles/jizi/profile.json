@@ -3,5 +3,7 @@
   "englishName": "Himeko",
   "faction": "星穹列车",
   "path": "智识",
-  "element": "火"
+  "element": "火",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

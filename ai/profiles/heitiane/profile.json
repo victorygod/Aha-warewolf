@@ -3,5 +3,7 @@
   "englishName": "Black Swan",
   "faction": "流光忆庭",
   "path": "虚无",
-  "element": "风"
+  "element": "风",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

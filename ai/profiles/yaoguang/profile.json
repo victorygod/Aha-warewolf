@@ -3,5 +3,7 @@
   "englishName": "Yao Guang",
   "faction": "仙舟联盟",
   "path": "欢愉",
-  "element": "物理"
+  "element": "物理",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

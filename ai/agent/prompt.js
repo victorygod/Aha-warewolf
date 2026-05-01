@@ -189,14 +189,20 @@ function loadProfilesFromDir(dir) {
     const thinking = fs.readFileSync(path.join(dirPath, 'thinking.md'), 'utf-8');
     const speaking = fs.readFileSync(path.join(dirPath, 'speaking.md'), 'utf-8');
     return {
+      profileName: d.name,
       name: profileData.name,
       background,
       thinking,
       speaking,
-      englishName: profileData.englishName,
-      faction: profileData.faction,
-      path: profileData.path,
-      element: profileData.element
+      profile: {
+        name: profileData.name,
+        englishName: profileData.englishName,
+        faction: profileData.faction,
+        path: profileData.path,
+        element: profileData.element,
+        icon: profileData.icon || 'icon.webp',
+        splashArt: profileData.splashArt || 'splash_art.webp'
+      }
     };
   });
 }
@@ -228,6 +234,10 @@ function resetUsedNames() {
   usedNames = new Set();
 }
 
+function releaseAIName(name) {
+  usedNames.delete(name);
+}
+
 function getRandomProfiles(count) {
   const fileProfiles = AI_PROFILES.filter(p => !usedNames.has(p.name));
   const shuffledFile = fileProfiles.sort(() => Math.random() - 0.5);
@@ -255,6 +265,7 @@ module.exports = {
   isSpeech,
   getRandomProfiles,
   resetUsedNames,
+  releaseAIName,
   ROLE_NAMES,
   DEFAULT_THINKING,
   CREATIVE_NAMES

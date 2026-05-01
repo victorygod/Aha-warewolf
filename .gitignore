@@ -1,3 +1,4 @@
 api_key.conf
 node_modules/
 logs/
+ai/profiles/*/*-perspective/

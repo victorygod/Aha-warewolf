@@ -2,6 +2,10 @@
 
 > **我，即是欢愉。**
 
+<p align="center">
+  <img src="public/assets/characters/huahuo.png" alt="花火" width="720">
+</p>
+
 你听见了吗？那是命途的低语。
 
 当阿哈的笑声回荡在星穹之间，当花火在面具之后露出意味不明的微笑——

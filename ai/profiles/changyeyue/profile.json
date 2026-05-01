@@ -3,5 +3,7 @@
   "englishName": "Evernight",
   "faction": "黄金裔",
   "path": "记忆",
-  "element": "冰"
+  "element": "冰",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

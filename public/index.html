@@ -4,15 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>狼人杀</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <div id="app">
+    <!-- 左侧玩家列 -->
+    <div id="players-left"></div>
+
+    <!-- 右侧玩家列 -->
+    <div id="players-right"></div>
+
     <!-- 头部状态栏 -->
     <header id="header">
-      <div id="phase-info">等待玩家加入</div>
-      <div id="day-count"></div>
-      <div id="my-role" class="hidden"></div>
+      <span id="phase-info">等待玩家加入</span>
+      <span id="day-count"></span>
+      <span id="my-role" class="hidden"></span>
     </header>
 
     <!-- 板子信息面板 -->
@@ -20,66 +26,92 @@
       <div id="preset-panel-name"></div>
       <div id="preset-panel-roles"></div>
       <div id="preset-panel-rules"></div>
+      <div id="preset-list"></div>
+      <div id="preset-locked" class="hidden"></div>
+      <div id="preset-locked-name"></div>
     </div>
 
-    <!-- 玩家列表 -->
-    <section id="players-section">
-      <div id="players-grid"></div>
-    </section>
-
-    <!-- 消息区域 -->
-    <section id="messages-section">
-      <div id="messages"></div>
-    </section>
-
-    <!-- 操作区域 -->
-    <section id="action-section">
-      <div id="action-prompt"></div>
-      <div id="action-input">
-        <input type="text" id="speech-input" placeholder="输入发言内容...">
-        <button id="send-btn">发送</button>
+    <!-- 主内容区 -->
+    <div id="main-content">
+      <!-- 等待房间 -->
+      <div id="waiting-room">
+        <div id="waiting-preset"></div>
+        <div id="waiting-players"></div>
+        <div id="waiting-spectators" class="hidden"></div>
       </div>
-      <div id="vote-buttons"></div>
-      <div id="skill-buttons"></div>
-    </section>
 
-    <!-- 设置面板 -->
+      <!-- 消息区域 -->
+      <section id="messages-section">
+        <div id="messages"></div>
+      </section>
+
+      <!-- 操作区域 -->
+      <section id="action-section">
+        <div id="action-prompt"></div>
+        <div id="action-input">
+          <input type="text" id="speech-input" placeholder="输入发言内容...">
+          <button id="send-btn">发送</button>
+        </div>
+        <div id="vote-buttons"></div>
+        <div id="skill-buttons"></div>
+      </section>
+    </div>
+
+    <!-- 设置面板（首次输入名字） -->
     <div id="setup-panel" class="panel">
-      <h2>狼人杀</h2>
+      <h2>🎭 欢愉杀</h2>
       <div class="form-group">
         <label>你的名字：</label>
-        <input type="text" id="player-name" placeholder="输入名字">
-      </div>
-      <div class="form-group">
-        <label>选择板子：</label>
-        <div id="preset-list"></div>
-        <div id="preset-locked" class="hidden">
-          <span id="preset-locked-name"></span>
-        </div>
-      </div>
-      <div id="debug-role-group" class="form-group hidden">
-        <label>Debug 模式 - 选择身份：</label>
-        <select id="debug-role-select">
-          <option value="">随机</option>
-          <option value="werewolf">狼人</option>
-          <option value="seer">预言家</option>
-          <option value="witch">女巫</option>
-          <option value="guard">守卫</option>
-          <option value="hunter">猎人</option>
-          <option value="villager">村民</option>
-          <option value="idiot">白痴</option>
-          <option value="cupid">丘比特</option>
-        </select>
+        <input type="text" id="player-name" placeholder="输入名字" autofocus>
       </div>
       <div class="buttons">
-        <button id="ready-btn">准备</button>
+        <button id="ready-btn">创建名字</button>
+      </div>
+    </div>
+    <div id="speaker-art" class="hidden">
+      <img src="" alt="">
+    </div>
+
+    <!-- 天黑请闭眼转场 -->
+    <div id="night-transition" class="hidden">
+      <div class="transition-bg"></div>
+      <div class="transition-text">
+        <div class="transition-col transition-left">
+          <span class="transition-char" data-delay="0">天</span>
+          <span class="transition-char" data-delay="1">黑</span>
+        </div>
+        <div class="transition-col transition-right">
+          <span class="transition-char" data-delay="2">请</span>
+          <span class="transition-char" data-delay="3">闭</span>
+          <span class="transition-char" data-delay="4">眼</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 观战者视角切换栏 -->
+    <div id="spectator-view-bar">
+      <button class="view-btn active" data-view="villager">村民</button>
+      <button class="view-btn" data-view="werewolf">狼人</button>
+      <button class="view-btn" data-view="god">上帝</button>
+    </div>
+
+    <!-- AI 角色详情弹窗 -->
+    <div id="profile-popup" class="hidden">
+      <div id="profile-popup-overlay"></div>
+      <div id="profile-popup-content">
+        <img id="profile-popup-art" src="" alt="">
+        <div id="profile-popup-info">
+          <div id="profile-popup-name"></div>
+          <div id="profile-popup-detail"></div>
+        </div>
+        <button id="profile-popup-close">✕</button>
       </div>
     </div>
   </div>
 
-  <script src="logger.js"></script>
-  <script src="message_parser.js"></script>
-  <script src="controller.js"></script>
-  <script src="app.js"></script>
+  <script src="logger.js?v=3"></script>
+  <script src="message_parser.js?v=3"></script>
+  <script src="controller.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

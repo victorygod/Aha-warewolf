@@ -3,5 +3,7 @@
   "englishName": "March 7th",
   "faction": "星穹列车",
   "path": "存护",
-  "element": "冰"
+  "element": "冰",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

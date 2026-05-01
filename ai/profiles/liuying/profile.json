@@ -3,5 +3,7 @@
   "englishName": "Firefly",
   "faction": "星核猎手",
   "path": "毁灭",
-  "element": "火"
+  "element": "火",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

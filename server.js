@@ -28,7 +28,7 @@ try {
 // 初始化日志（每次启动清空日志）
 clearLogs();
 const backendLogger = createLogger('backend.log');
-const frontendLogger = createLogger('frontend.log');
+const frontendLogger = createLogger('frontend.log', true);
 
 // 导出日志实例供其他模块使用
 global.backendLogger = backendLogger;

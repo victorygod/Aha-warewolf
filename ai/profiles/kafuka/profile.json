@@ -3,5 +3,7 @@
   "englishName": "Kafka",
   "faction": "星核猎手",
   "path": "虚无",
-  "element": "雷"
+  "element": "雷",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

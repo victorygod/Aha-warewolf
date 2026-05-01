@@ -3,5 +3,7 @@
   "englishName": "Constance",
   "faction": "永火官邸",
   "path": "虚无",
-  "element": "火"
+  "element": "火",
+  "icon": "icon.webp",
+  "splashArt": "splash_art.webp"
 }

@@ -60,7 +60,7 @@ function getRelativePath(fullPath) {
   return relative;
 }
 
-function writeLog(filepath, level, msg) {
+function writeLog(filepath, level, msg, opts = {}) {
   if (level === 'DEBUG' && !global.DEBUG_MODE) {
     return;
   }
@@ -85,20 +85,21 @@ function writeLog(filepath, level, msg) {
   const target = _testLogPath || filepath;
   fs.appendFileSync(target, line);
 
-  if (level === 'ERROR') {
+  if (level === 'ERROR' && !opts.silent) {
     console.error(`[${level}] ${caller} ${msg}`);
   }
 }
 
-function createLogger(filename) {
+function createLogger(filename, silent = false) {
   ensureLogsDir();
   const filepath = path.join(LOGS_DIR, filename);
+  const opts = { silent };
   return {
-    info: (msg) => writeLog(filepath, 'INFO', msg),
-    warn: (msg) => writeLog(filepath, 'WARN', msg),
-    error: (msg) => writeLog(filepath, 'ERROR', msg),
-    debug: (msg) => writeLog(filepath, 'DEBUG', msg),
-    write: (level, msg) => writeLog(filepath, level, msg)
+    info: (msg) => writeLog(filepath, 'INFO', msg, opts),
+    warn: (msg) => writeLog(filepath, 'WARN', msg, opts),
+    error: (msg) => writeLog(filepath, 'ERROR', msg, opts),
+    debug: (msg) => writeLog(filepath, 'DEBUG', msg, opts),
+    write: (level, msg) => writeLog(filepath, level, msg, opts)
   };
 }
 
