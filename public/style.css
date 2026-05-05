@@ -370,8 +370,12 @@ body.phase-gameover #main-content {
 .player-position {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: #fff;
   margin-bottom: 2px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .player-name {

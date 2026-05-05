@@ -32,12 +32,12 @@ function createStandardCheckWin() {
     const isRevealedIdiot = (p) => p.role.id === 'idiot' && p.state?.revealed;
 
     // 狼人胜利：屠边（神职全灭或村民全灭），已翻牌白痴不算神职
-    const gods = game.players.filter(p => p.alive && !isRevealedIdiot(p) && p.role.type === ROLE_TYPE.GOD);
-    const villagers = game.players.filter(p => p.alive && p.role.type === ROLE_TYPE.VILLAGER);
+    const gods = game.players.filter(p => p.alive && !isRevealedIdiot(p) && p.role?.type === ROLE_TYPE.GOD);
+    const villagers = game.players.filter(p => p.alive && p.role?.type === ROLE_TYPE.VILLAGER);
     if (gods.length === 0 || villagers.length === 0) return CAMP.WOLF;
 
     // 好人胜利：狼人全灭
-    const wolves = game.players.filter(p => p.alive && p.role.camp === CAMP.WOLF);
+    const wolves = game.players.filter(p => p.alive && p.role?.camp === CAMP.WOLF);
     if (wolves.length === 0) return CAMP.GOOD;
 
     return null;
@@ -54,7 +54,7 @@ function createCupidCheckWin() {
       if (!game.couples || game.couples.length < 2) return false;
       const coupleCamps = game.couples.map(id => {
         const p = game.players.find(pl => pl.id === id);
-        return p ? p.role.camp : null;
+        return p ? p.role?.camp : null;
       });
       return coupleCamps.includes(CAMP.GOOD) && coupleCamps.includes(CAMP.WOLF);
     };
@@ -62,7 +62,7 @@ function createCupidCheckWin() {
     // 获取第三方成员ID（丘比特+情侣）
     const getThirdPartyIds = () => {
       const ids = [...game.couples];
-      const cupid = game.players.find(p => p.role.id === 'cupid');
+      const cupid = game.players.find(p => p.role?.id === 'cupid');
       if (cupid) ids.push(cupid.id);
       return ids;
     };
@@ -70,11 +70,11 @@ function createCupidCheckWin() {
     // 获取实际阵营
     const getActualCamp = (player) => {
       // 非人狼恋，返回原始阵营
-      if (!isHumanWolfCouple()) return player.role.camp;
+      if (!isHumanWolfCouple()) return player.role?.camp;
 
       // 人狼恋：丘比特和情侣始终为第三方
       const thirdPartyIds = getThirdPartyIds();
-      return thirdPartyIds.includes(player.id) ? CAMP.THIRD : player.role.camp;
+      return thirdPartyIds.includes(player.id) ? CAMP.THIRD : player.role?.camp;
     };
 
     // ===== 胜利判断 =====
@@ -106,8 +106,8 @@ function createCupidCheckWin() {
     if (aliveByCamp.wolf === 0 && aliveByCamp.third === 0) return CAMP.GOOD;
 
     // 狼人胜利：屠边且第三方死光
-    const gods = alivePlayers.filter(p => getActualCamp(p) !== CAMP.THIRD && p.role.type === ROLE_TYPE.GOD);
-    const villagers = alivePlayers.filter(p => getActualCamp(p) !== CAMP.THIRD && p.role.type === ROLE_TYPE.VILLAGER);
+    const gods = alivePlayers.filter(p => getActualCamp(p) !== CAMP.THIRD && p.role?.type === ROLE_TYPE.GOD);
+    const villagers = alivePlayers.filter(p => getActualCamp(p) !== CAMP.THIRD && p.role?.type === ROLE_TYPE.VILLAGER);
     if ((gods.length === 0 || villagers.length === 0) && aliveByCamp.third === 0) return CAMP.WOLF;
 
     return null;
@@ -116,7 +116,7 @@ function createCupidCheckWin() {
 
 // 获取玩家原始阵营
 function getCamp(player, game) {
-  return player.role.camp;
+  return player.role?.camp;
 }
 
 // 遗言规则

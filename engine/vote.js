@@ -61,10 +61,10 @@ class VoteManager {
   }
 
   // 广播投票结果
-  _broadcastVoteResult(title, voteDetails, voteCounts) {
+  _broadcastVoteResult(title, voteDetails, voteCounts, template = 'DAY_VOTE') {
     this.game.message.add({
       type: 'vote_result',
-      content: buildMessage('DAY_VOTE', { 票型: formatVoteDetails(voteDetails, voteCounts) }),
+      content: buildMessage(template, { 票型: formatVoteDetails(voteDetails, voteCounts) }),
       voteDetails,
       voteCounts,
       visibility: VISIBILITY.PUBLIC
@@ -212,14 +212,14 @@ class VoteManager {
   }
 
   // 执行一轮选举投票
-  async _runElectionRound(candidates, voters, useWeight, title) {
+  async _runElectionRound(candidates, voters, useWeight, title, template = 'SHERIFF_VOTE') {
     const allowedTargets = candidates.map(c => c.id);
     await Promise.all(voters.map(voter =>
       this.game.callVote(voter.id, ACTION.SHERIFF_VOTE, { allowedTargets })
     ));
 
     const { voteCounts, voteDetails } = this.calculateVoteResults(voters, { useWeight });
-    this._broadcastVoteResult(title, voteDetails, voteCounts);
+    this._broadcastVoteResult(title, voteDetails, voteCounts, template);
 
     const { maxVotes, maxPlayer: winner } = this.findMaxVotes(voteCounts);
     const topVotes = this.findTopVotes(voteCounts, maxVotes);
@@ -283,7 +283,7 @@ class VoteManager {
     }
 
     this.game.votes = {};
-    const { winner, topVotes: pkTopVotes } = await this._runElectionRound(topVotes, pkVoters, false, 'PK投票结果');
+    const { winner, topVotes: pkTopVotes } = await this._runElectionRound(topVotes, pkVoters, false, 'PK投票结果', 'SHERIFF_PK_VOTE');
 
     if (pkTopVotes.length > 1) {
       this.game.sheriff = null;

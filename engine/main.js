@@ -673,7 +673,7 @@ class GameEngine extends EventEmitter {
         profileName: p.profileName || null,
         profile: p.isAI && p.profile ? p.profile : null,
         ready: p.ready !== undefined ? p.ready : (p.isAI ? true : false),
-        role: p.role,
+        role: p.role || null,
         debugRole: p.debugRole || null,
         // 额外状态信息
         deathReason: p.deathReason,
@@ -799,7 +799,7 @@ class GameEngine extends EventEmitter {
       const role = createPlayerRole(roleId);
       if (!role) {
         getLogger().error(`无法创建角色: ${roleId}, 玩家: ${player.name}`);
-        continue;
+        throw new Error(`无法创建角色: ${roleId}`);
       }
       player.role = role;
       player.state = role.state ? { ...role.state } : {};

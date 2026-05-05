@@ -1011,8 +1011,32 @@ function renderChatMessage(msg, state) {
     ? window.MessageParser.parseMessageContent(msg.content)
     : msg.content;
 
-  // @提及高亮
-  const highlightedContent = parsedContent.replace(/@(\S+)/g, '<span class="chat-mention">@$1</span>');
+  // @提及高亮（前缀匹配：@xxyyww 可匹配玩家 xx）
+  const playerNames = (state?.players || []).map(p => p.name).filter(Boolean);
+  playerNames.sort((a, b) => b.length - a.length);
+  let highlightedContent = '';
+  let i = 0;
+  while (i < parsedContent.length) {
+    if (parsedContent[i] === '@') {
+      const textAfterAt = parsedContent.slice(i + 1);
+      let matched = false;
+      for (const name of playerNames) {
+        if (textAfterAt.startsWith(name)) {
+          highlightedContent += `@<span class="chat-mention">${name}</span>`;
+          i += 1 + name.length;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        highlightedContent += '@';
+        i++;
+      }
+    } else {
+      highlightedContent += parsedContent[i];
+      i++;
+    }
+  }
 
   const tpl = document.getElementById('tpl-chat-message');
   const el = tpl.content.cloneNode(true).querySelector('.chat-message');

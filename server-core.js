@@ -75,6 +75,9 @@ class ServerCore {
   }
 
   stop() {
+    if (this.game?.phaseManager) {
+      this.game.phaseManager.stop();
+    }
     if (this.wss) {
       this.wss.clients.forEach(client => {
         try { client.terminate(); } catch (_) {}
@@ -137,8 +140,9 @@ class ServerCore {
   }
 
   async _handleMessage(ws, data) {
+    let msg;
     try {
-      const msg = JSON.parse(data);
+      msg = JSON.parse(data);
 
       // 处理前端日志
       if (msg.type === 'frontend_log') {
@@ -271,7 +275,7 @@ class ServerCore {
     // 游戏已开始 → 新连接自动进入观战席
     if (this.game.phaseManager && this.game.phaseManager.running) {
       const spectatorId = this._nextSpectatorId++;
-      const spectator = { id: spectatorId, name, view: 'villager', ws };
+      const spectator = { id: spectatorId, name, view: 'god', ws };
       this.spectators.push(spectator);
       this.clients.set(ws, { playerId: null, name, isSpectator: true, spectatorId });
       this.send(ws, 'spectator_assigned', { spectatorId, name });
@@ -286,7 +290,7 @@ class ServerCore {
     // 房间已满 → 进入观战席
     if (this.game.players.length >= this.game.playerCount) {
       const spectatorId = this._nextSpectatorId++;
-      const spectator = { id: spectatorId, name, view: 'villager', ws };
+      const spectator = { id: spectatorId, name, view: 'god', ws };
       this.spectators.push(spectator);
       this.clients.set(ws, { playerId: null, name, isSpectator: true, spectatorId });
       this.send(ws, 'spectator_assigned', { spectatorId, name });
@@ -1055,23 +1059,20 @@ class ServerCore {
       return `${pos}号${p.name}: ${roleName} - ${status}`;
     }).join('\n');
 
+    const items = [];
     for (const [playerId, controller] of this.aiManager.controllers) {
       const player = this.game.players.find(p => p.id === playerId);
       if (!player) continue;
 
-      // 补充死亡 AI 错过的公开消息
       if (!player.alive) {
         this._supplementDeadAIMessages(controller);
       }
 
-      const chatContext = {
-        event: 'game_over',
-        winner: winnerText,
-        playersInfo
-      };
-
-      this._enqueueAIChat(controller, chatContext);
+      items.push({ controller, chatContext: { event: 'game_over', winner: winnerText, playersInfo } });
     }
+
+    this._aiChatQueue.push(...items);
+    this._processAIChatQueue();
   }
 
   _supplementDeadAIMessages(controller) {
@@ -1090,14 +1091,18 @@ class ServerCore {
     if (!this.game || !this.aiManager) return;
     if (this.game.phaseManager && this.game.phaseManager.running) return;
 
-    const mentions = chatMsg.content.match(/@(\S+)/g);
-    if (!mentions) return;
+    const content = chatMsg.content;
+    const mentionedControllers = new Set();
 
-    for (const mention of mentions) {
-      const name = mention.slice(1);
-      const controller = this._findAIControllerByName(name);
-      if (controller) {
-        // 将该 AI 上次压缩点到当前 @提及 之间的聊天记录放入 chatContext
+    let pos = 0;
+    while ((pos = content.indexOf('@', pos)) !== -1) {
+      const textAfterAt = content.slice(pos + 1);
+      if (textAfterAt.length === 0) { pos++; continue; }
+
+      const controller = this._findAIControllerByPrefix(textAfterAt);
+      if (controller && !mentionedControllers.has(controller)) {
+        mentionedControllers.add(controller);
+
         const lastCompressedId = controller.agent.mm.lastCompressedChatId || controller.lastChatMessageId || 0;
         const recentChat = this.displayMessages.filter(m => m.source === 'chat' && m.id > lastCompressedId && m.id <= chatMsg.id);
         controller.lastChatMessageId = chatMsg.id;
@@ -1110,16 +1115,22 @@ class ServerCore {
         };
         this._enqueueAIChat(controller, chatContext);
       }
+      pos++;
     }
   }
 
-  _findAIControllerByName(name) {
+  _findAIControllerByPrefix(textAfterAt) {
     if (!this.game || !this.aiManager) return null;
+    let bestMatch = null;
+    let bestLength = 0;
     for (const [playerId, controller] of this.aiManager.controllers) {
       const player = this.game.players.find(p => p.id === playerId);
-      if (player && player.name === name) return controller;
+      if (player && textAfterAt.startsWith(player.name) && player.name.length > bestLength) {
+        bestMatch = controller;
+        bestLength = player.name.length;
+      }
     }
-    return null;
+    return bestMatch;
   }
 
   _formatChatMessagesForAI(messages) {
@@ -1137,46 +1148,74 @@ class ServerCore {
 
     this._aiChatProcessing = true;
 
+    // game_over 事件并行处理，其他事件顺序处理
+    const gameOverItems = [];
+    const sequentialItems = [];
     while (this._aiChatQueue.length > 0) {
-      const { controller, chatContext } = this._aiChatQueue.shift();
-
-      // 随机延迟 0-2 秒
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
-
-      try {
-        const result = await controller.sendChatMessage(chatContext);
-        if (result) {
-          const chatMsg = {
-            id: ++this.chatMessageId,
-            type: 'chat',
-            playerId: result.playerId,
-            playerName: result.playerName,
-            content: result.content,
-            isAI: true,
-            timestamp: Date.now(),
-            event: chatContext.event || 'waiting'
-          };
-          this.chatMessages.push(chatMsg);
-          this.displayMessages.push({ ...chatMsg, source: 'chat', displayId: ++this.displayMessageId });
-          this.broadcastState();
-
-          // AI 发的消息也会触发 @提及，允许 AI 互相对话
-          this._handleChatMentions(chatMsg);
-        }
-
-        if (chatContext.event === 'game_over') {
-          await controller.agent.postGameCompress();
-          const gameInfo = this._buildGameInfoMessage();
-          if (gameInfo) {
-            controller.agent.mm.appendGameInfo(gameInfo);
-          }
-        }
-      } catch (e) {
-        this.backendLogger.error(`[AI-Chat] 队列处理错误: ${e.message}`);
+      const item = this._aiChatQueue.shift();
+      if (item.chatContext.event === 'game_over') {
+        gameOverItems.push(item);
+      } else {
+        sequentialItems.push(item);
       }
     }
 
+    // 并行处理所有 game_over 发言
+    if (gameOverItems.length > 0) {
+      this.backendLogger.info(`[AI-Chat] 并行复盘: ${gameOverItems.length} 个 AI 同时发言`);
+      const promises = gameOverItems.map(({ controller, chatContext }) => {
+        const delay = Math.random() * 2000;
+        return new Promise(resolve => setTimeout(resolve, delay))
+          .then(() => this._executeAIChat(controller, chatContext));
+      });
+      await Promise.all(promises);
+    }
+
+    // 顺序处理 @提及 和 waiting 事件
+    for (const { controller, chatContext } of sequentialItems) {
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
+      await this._executeAIChat(controller, chatContext);
+    }
+
     this._aiChatProcessing = false;
+
+    // 处理期间可能新入队了消息，再检查一次
+    if (this._aiChatQueue.length > 0) {
+      this._processAIChatQueue();
+    }
+  }
+
+  async _executeAIChat(controller, chatContext) {
+    try {
+      const result = await controller.sendChatMessage(chatContext);
+      if (result) {
+        const chatMsg = {
+          id: ++this.chatMessageId,
+          type: 'chat',
+          playerId: result.playerId,
+          playerName: result.playerName,
+          content: result.content,
+          isAI: true,
+          timestamp: Date.now(),
+          event: chatContext.event || 'waiting'
+        };
+        this.chatMessages.push(chatMsg);
+        this.displayMessages.push({ ...chatMsg, source: 'chat', displayId: ++this.displayMessageId });
+        this.broadcastState();
+
+        this._handleChatMentions(chatMsg);
+      }
+
+      if (chatContext.event === 'game_over') {
+        await controller.agent.postGameCompress();
+        const gameInfo = this._buildGameInfoMessage();
+        if (gameInfo) {
+          controller.agent.mm.appendGameInfo(gameInfo);
+        }
+      }
+    } catch (e) {
+      this.backendLogger.error(`[AI-Chat] 队列处理错误: ${e.message}`);
+    }
   }
 
   // ========== 游戏事件监听 ==========
