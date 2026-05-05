@@ -967,8 +967,9 @@ class ServerCore {
 
   _sendInitialState(ws) {
     if (this.game) {
+      const isGameRunning = this.game.phaseManager && this.game.phaseManager.running;
       const state = this.game.getState();
-      state.messages = this._getDisplayMessagesForPlayer(null);
+      state.messages = isGameRunning ? [] : this._getDisplayMessagesForPlayer(null);
       state.presetLocked = this.currentPresetId !== null;
       state.presetId = this.currentPresetId;
       state.debugMode = this.debugMode;

@@ -1604,6 +1604,92 @@ function scrollToBottom(el) {
   });
 }
 
+function exportGameText(view) {
+  const state = controller.getState();
+  const allMessages = controller.getMessageHistory();
+  const isVillager = view === 'villager';
+
+  const filtered = isVillager
+    ? allMessages.filter(msg => !msg.visibility || msg.visibility === 'public')
+    : allMessages;
+
+  const VIS_TAG = { self: '[私密]', camp: '[阵营]', couple: '[情侣]', couple_identity: '[情侣]', cupid_identity: '[丘比特]' };
+  const CAMP_NAMES = { wolf: '狼人', good: '好人', third: '第三方' };
+
+  let lines = [];
+  const winner = state?.winner;
+  if (winner) {
+    lines.push(`=== ${CAMP_NAMES[winner] || winner}阵营获胜 ===`);
+    lines.push('');
+  }
+
+  if (!isVillager && state?.gameOverInfo?.players) {
+    const DEATH_REASONS = { wolf: '被狼人击杀', poison: '被女巫毒杀', conflict: '同守同救', vote: '被放逐', hunter: '被猎人带走', couple: '殉情' };
+    lines.push('--- 玩家身份 ---');
+    state.gameOverInfo.players.forEach((p, idx) => {
+      const display = p.display || `${idx + 1}号${p.name}`;
+      const roleName = p.role ? ROLE_NAMES[p.role.id] || p.role.id : '未知';
+      const deathInfo = p.alive ? '存活' : (p.deathReason ? `死亡(${DEATH_REASONS[p.deathReason] || p.deathReason})` : '死亡');
+      const sheriffMark = p.isSheriff ? ' [警长]' : '';
+      const coupleMark = p.isCouple ? ' [情侣]' : '';
+      lines.push(`${display}: ${roleName} - ${deathInfo}${sheriffMark}${coupleMark}`);
+    });
+    lines.push('');
+  }
+
+  lines.push(`--- 游戏记录（${isVillager ? '村民视角' : '上帝视角'}）---`);
+  lines.push('');
+
+  filtered.forEach(msg => {
+    if (msg.source === 'chat') return;
+    if (msg.type === 'phase_start') {
+      const roundStr = msg.round ? `·第${msg.round}轮 ` : '';
+      lines.push('');
+      lines.push(`━━ ${roundStr}${msg.phaseName || msg.phase || ''} ━━`);
+    } else if (msg.type === 'speech' || msg.type === 'wolf_speech' || msg.type === 'last_words' || msg.type === 'sheriff_speech') {
+      const vis = VIS_TAG[msg.visibility] ? `${VIS_TAG[msg.visibility]} ` : '';
+      lines.push(`${vis}${msg.playerName || ''}: ${msg.content}`);
+    } else if ((msg.type === 'vote_result' || msg.type === 'wolf_vote_result') && msg.voteDetails) {
+      const vis = VIS_TAG[msg.visibility] ? `${VIS_TAG[msg.visibility]} ` : '';
+      const byTarget = {};
+      for (const v of msg.voteDetails) {
+        if (!byTarget[v.target]) byTarget[v.target] = [];
+        byTarget[v.target].push(v.voter);
+      }
+      let voteStr = Object.entries(byTarget).map(([target, voters]) => `${target} ${voters.length}票（${voters.join('，')}）`).join(' | ');
+      const isWolf = msg.type === 'wolf_vote_result';
+      const title = isWolf ? '狼人投票' : '投票结果';
+      if (isWolf && msg.content) {
+        const match = msg.content.match(/最终击杀：(.+)/);
+        if (match) voteStr += `\n最终击杀：${match[1]}`;
+      }
+      lines.push(`${vis}${title}: ${voteStr}`);
+    } else if (msg.type === 'vote_tie') {
+      lines.push(msg.content);
+    } else if (msg.type === 'death_announce' && msg.deaths) {
+      msg.deaths.forEach(d => lines.push(`${d.id}号${d.name} 死亡`));
+    } else if (msg.type === 'sheriff_candidates') {
+      lines.push(msg.content);
+    } else if (msg.type === 'sheriff_elected') {
+      lines.push(msg.content);
+    } else if (msg.content) {
+      const vis = VIS_TAG[msg.visibility] ? `${VIS_TAG[msg.visibility]} ` : '';
+      lines.push(`${vis}${msg.content}`);
+    }
+  });
+
+  const text = lines.join('\n');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `狼人杀记录_${isVillager ? '村民视角' : '上帝视角'}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // 显示消息
 function displayMessage(msg, state) {
   const msgId = msg.displayId || msg.id;
@@ -1945,9 +2031,17 @@ function updateDefaultAction(state) {
         gameOverHtml += `<div>${display}: ${roleName} - ${deathInfo}${sheriffMark}${coupleMark}</div>`;
       });
     }
+    gameOverHtml += '</div>';
+    gameOverHtml += '<div class="export-bar">';
+    gameOverHtml += '<button class="export-btn" data-view="villager">导出·村民视角</button>';
+    gameOverHtml += '<button class="export-btn" data-view="god">导出·上帝视角</button>';
     gameOverHtml += '</div></div>';
 
     elements.actionPrompt.innerHTML = gameOverHtml;
+
+    elements.actionPrompt.querySelectorAll('.export-btn').forEach(btn => {
+      btn.addEventListener('click', () => exportGameText(btn.dataset.view));
+    });
 
     // 返回房间按钮（行内）
     document.getElementById('restart-btn').classList.remove('hidden');
