@@ -193,6 +193,91 @@ describe('VoteManager - _handleBanishResult', () => {
     game.voteManager._handleBanishResult(villager);
     assertPlayerDead(game, villager.id, 'vote');
   });
+
+  it('放逐玩家设置banishedPlayer', () => {
+    const villager = game.players.find(p => p.role.id === 'villager');
+    game.voteManager._handleBanishResult(villager);
+    if (game.banishedPlayer !== villager) throw new Error('banishedPlayer应为被放逐玩家');
+  });
+
+  it('白痴翻牌免疫时不设置banishedPlayer', () => {
+    const idiot = game.players.find(p => p.role.id === 'idiot');
+    game.voteManager._handleBanishResult(idiot);
+    if (game.banishedPlayer != null) throw new Error('白痴翻牌免疫不应设置banishedPlayer');
+  });
+});
+
+describe('VoteManager - 警长被放逐后传警徽', () => {
+  let game, harness;
+
+  beforeEach(() => {
+    harness = createGame({ presetId: '12-hunter-idiot' });
+    game = harness.game;
+    game.round = 2;
+  });
+
+  it('警长被公投放逐后传警徽', async () => {
+    const villager = game.players.find(p => p.role.id === 'villager');
+    game.sheriff = villager.id;
+
+    // mock策略返回tool期望的{target}格式
+    const mock = harness.mockModels[villager.id];
+    mock.customStrategies['action_passBadge'] = (ctx) => {
+      const t = ctx.alivePlayers?.filter(p => p.id !== ctx.self?.id).map(p => p.id) || [];
+      return t.length > 0 ? { target: t[0] } : { target: null };
+    };
+
+    game.voteManager._handleBanishResult(villager);
+    assertPlayerDead(game, villager.id, 'vote');
+
+    const { PHASE } = require('../../../engine/constants');
+    game.phaseManager = {
+      getCurrentPhase: () => ({ id: PHASE.POST_VOTE }),
+      start: () => Promise.resolve()
+    };
+
+    const deadPlayer = game.banishedPlayer || game.lastWordsPlayer;
+    if (!deadPlayer) throw new Error('banishedPlayer和lastWordsPlayer都为null，无法进入死亡管道');
+
+    game.deathQueue = [];
+    await game.processDeathChain([deadPlayer], PHASE.POST_VOTE);
+
+    if (game.sheriff === villager.id) throw new Error('警长已死，不应仍持有警徽');
+  });
+
+  it('canSpeak=false的警长被放逐后仍能传警徽', async () => {
+    const villager = game.players.find(p => p.role.id === 'villager');
+    game.sheriff = villager.id;
+    villager.state.canSpeak = false;
+
+    // mock策略返回tool期望的{target}格式
+    const mock = harness.mockModels[villager.id];
+    mock.customStrategies['action_passBadge'] = (ctx) => {
+      const t = ctx.alivePlayers?.filter(p => p.id !== ctx.self?.id).map(p => p.id) || [];
+      return t.length > 0 ? { target: t[0] } : { target: null };
+    };
+
+    game.voteManager._handleBanishResult(villager);
+    assertPlayerDead(game, villager.id, 'vote');
+
+    if (game.lastWordsPlayer !== null) throw new Error('canSpeak=false不应有遗言');
+    if (game.banishedPlayer !== villager) throw new Error('banishedPlayer应为被放逐玩家');
+
+    const { PHASE } = require('../../../engine/constants');
+    game.phaseManager = {
+      getCurrentPhase: () => ({ id: PHASE.POST_VOTE }),
+      start: () => Promise.resolve()
+    };
+
+    game.deathQueue = [];
+    await game.processDeathChain([game.banishedPlayer], PHASE.POST_VOTE);
+
+    const badgeMessages = game.message.messages.filter(m =>
+      m.content && m.content.includes('警徽')
+    );
+    if (badgeMessages.length === 0) throw new Error('canSpeak=false的警长被放逐后应有传警徽消息');
+    if (game.sheriff === villager.id) throw new Error('警长已死，不应仍持有警徽');
+  });
 });
 
 run();

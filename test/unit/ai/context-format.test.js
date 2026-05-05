@@ -68,7 +68,7 @@ function validateMessages(messages, expected) {
   if (messages.length === 0) throw new Error('messages 不应为空');
 
   if (messages[0].role !== 'system') throw new Error('第一条消息应为 system');
-  if (!messages[0].content.includes('名字:')) throw new Error('system 消息应包含名字');
+  if (!messages[0].content.includes('你是')) throw new Error('system 消息应包含名字');
   if (!messages[0].content.includes('角色:')) throw new Error('system 消息应包含角色');
 
   if (expected.minMessages) {

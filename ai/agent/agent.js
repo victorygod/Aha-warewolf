@@ -14,19 +14,17 @@ let backendLogger = null;
 const getLogger = () => backendLogger || (backendLogger = createLogger('backend.log'));
 
 class Agent {
-  constructor(playerId, options = {}) {
-    this.playerId = playerId;
-
+  constructor(options = {}) {
     this.requestQueue = [];
     this.isProcessing = false;
 
-    this.mm = new MessageManager(playerId, {
+    this.mm = new MessageManager({
       compressionEnabled: options.compressionEnabled !== false
     });
 
     this.llmModel = options.useLLM ? new LLMModel(options) : null;
-    this.randomModel = new RandomModel(playerId);
-    this.mockModel = options.mockOptions ? new MockModel(playerId, options.mockOptions) : null;
+    this.randomModel = new RandomModel();
+    this.mockModel = options.mockOptions ? new MockModel(null, options.mockOptions) : null;
 
     this._models = [
       { model: this.mockModel, name: 'MockModel' },
@@ -39,8 +37,40 @@ class Agent {
     return this.mm.messages;
   }
 
-  updateSystemMessage(player, game) {
-    this.mm.updateSystem(player, game);
+  updateSystemMessage(player, game, mode = 'game') {
+    this.mm.updateSystem(player, game, mode);
+  }
+
+  async enterGame(player, game, chatContent) {
+    this._drainQueue();
+    this.mm.updateSystem(player, game, 'game');
+    if (chatContent) {
+      this.mm.loadChatHistory(chatContent);
+    }
+    this.mm.resetWatermark();
+  }
+
+  exitGame(player) {
+    this._drainQueue();
+    this.mm.updateSystem(player, null, 'chat');
+  }
+
+  async postGameCompress() {
+    await this.mm.compress(this.llmModel, 'chat');
+    this.mm.resetWatermark();
+  }
+
+  async resetForNewGame(player, game) {
+    this._drainQueue();
+    await this.mm.compress(this.llmModel);
+    this.mm.updateSystem(player, game, 'game');
+    this.mm.resetWatermark();
+  }
+
+  destroy() {
+    this._drainQueue();
+    this.mm.messages = [];
+    this.mm._lastContext = null;
   }
 
   enqueue(request) {
@@ -80,7 +110,8 @@ class Agent {
 
     const tools = isDecision ? getToolsForAction(context.action, context) : [];
 
-    getLogger().debug(`[Agent] ${this.playerId} ${isDecision ? '决策' : '分析'} messages count: ${llmView.length}, newMessages: ${newMessages.length}`);
+    const playerName = context.self?.name || 'unknown';
+    getLogger().debug(`[Agent] ${playerName} ${isDecision ? '决策' : '分析'} messages count: ${llmView.length}, newMessages: ${newMessages.length}`);
 
     for (const { model, name } of this._models) {
       if (!model?.isAvailable()) continue;
@@ -153,13 +184,13 @@ class Agent {
                 { role: 'assistant', content: raw?.content || null, tool_calls: [toolCall] },
                 { role: 'tool', tool_call_id: toolCall.id, content: toolResultContent }
               ], newMessages);
-              getLogger().info(`[Agent] ${this.playerId} 决策完成：${context.phase}`);
+              getLogger().info(`[Agent] ${context.self?.name || 'unknown'} 决策完成：${context.phase}`);
               return action;
             }
             lastAssistantContent = raw?.content || null;
             lastToolCalls = [toolCall];
             lastToolResult = { tool_call_id: toolCall.id, content: toolResultContent };
-            getLogger().warn(`[Agent] ${this.playerId} tool 执行失败：${execResult.error}，继续重试`);
+            getLogger().warn(`[Agent] ${context.self?.name || 'unknown'} tool 执行失败：${execResult.error}，继续重试`);
           }
         }
 
@@ -170,9 +201,9 @@ class Agent {
         const userMsg = { role: 'user', content: history };
         const assistantMsg = { role: 'assistant', content: content || '' };
         this.mm.appendTurn([userMsg, assistantMsg], newMessages);
-        getLogger().info(`[Agent] ${this.playerId} 完成，分析内容长度: ${content?.length || 0}`);
+        getLogger().info(`[Agent] ${context.self?.name || 'unknown'} 完成，分析内容长度: ${content?.length || 0}`);
         if (!content) {
-          getLogger().warn(`[Agent] ${this.playerId} 分析返回空内容，原始raw: ${JSON.stringify(raw)}`);
+          getLogger().warn(`[Agent] ${context.self?.name || 'unknown'} 分析返回空内容，原始raw: ${JSON.stringify(raw)}`);
         }
         return content || '';
       }
@@ -183,7 +214,7 @@ class Agent {
     }
 
     this._saveFailedHistory(history, lastAssistantContent, lastToolCalls, lastToolResult, newMessages);
-    getLogger().error(`[Agent] ${this.playerId} agent loop 超过最大迭代次数`);
+    getLogger().error(`[Agent] ${context.self?.name || 'unknown'} agent loop 超过最大迭代次数`);
     return null;
   }
 
@@ -201,8 +232,11 @@ class Agent {
   shouldAnalyzeMessage(msg, selfPlayerId, game) {
     if (!ANALYSIS_NODES.includes(msg.type) || msg.playerId === selfPlayerId || msg.visibility === VISIBILITY.SELF) return false;
 
+    const selfPlayer = game?.players?.find(p => p.id === selfPlayerId);
+    if (selfPlayer && selfPlayer.alive === false) return false;
+    if (game?.winner) return false;
+
     if (msg.visibility === VISIBILITY.CAMP) {
-      const selfPlayer = game?.players?.find(p => p.id === selfPlayerId);
       const sender = game?.players?.find(p => p.id === msg.playerId);
       const getCamp = game?.config?.hooks?.getCamp;
       if (!selfPlayer || !sender || getCamp?.(selfPlayer, game) !== getCamp?.(sender, game)) return false;
@@ -213,6 +247,14 @@ class Agent {
     }
 
     return true;
+  }
+
+  _drainQueue() {
+    for (const { callback } of this.requestQueue) {
+      callback?.(null);
+    }
+    this.requestQueue = [];
+    this.isProcessing = false;
   }
 }
 

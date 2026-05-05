@@ -110,37 +110,6 @@ describe('完整流程格式化', () => {
   });
 });
 
-describe('buildSystemPrompt角色攻略', () => {
-  it('加载女巫攻略', () => {
-    const player = { id: 5, name: '小华', role: { id: 'witch', camp: 'good' }, soul: '你是一个优秀的玩家。' };
-    const game = { presetId: '12-hunter-idiot', preset: { ruleDescriptions: ['女巫仅首夜可自救', '猎人被毒不能开枪'] }, players: mockPlayers };
-    const prompt = buildSystemPrompt(player, game);
-    if (!prompt.includes('名字:小华')) throw new Error('应包含名字');
-    if (!prompt.includes('位置:5号位')) throw new Error('应包含位置');
-    if (!prompt.includes('角色:女巫')) throw new Error('应包含角色');
-    if (!prompt.includes('规则:女巫仅首夜可自救|猎人被毒不能开枪')) throw new Error('应包含规则');
-    if (!prompt.includes('【角色攻略】')) throw new Error('应包含攻略标题');
-    if (!prompt.includes('自救')) throw new Error('应包含自救策略');
-  });
-
-  it('无攻略时正常返回', () => {
-    const player = { id: 8, name: '小强', role: { id: 'cupid', camp: 'neutral' }, soul: '测试' };
-    const game = { presetId: '12-hunter-idiot', preset: { ruleDescriptions: ['测试规则'] }, players: mockPlayers };
-    const prompt = buildSystemPrompt(player, game);
-    if (!prompt.includes('名字:小强')) throw new Error('应包含名字');
-    if (!prompt.includes('角色:丘比特')) throw new Error('应包含角色');
-    if (!prompt.includes('规则:测试规则')) throw new Error('应包含规则');
-    if (prompt.includes('【角色攻略】\n\n')) throw new Error('攻略为空时不应有空标题');
-  });
-
-  it('9人标准局狼人攻略', () => {
-    const player = { id: 3, name: '小刚', role: { id: 'werewolf', camp: 'wolf' }, soul: '测试' };
-    const game = { presetId: '9-standard', preset: { ruleDescriptions: ['标准规则'] }, players: mockPlayers };
-    const prompt = buildSystemPrompt(player, game);
-    if (!prompt.includes('队友')) throw new Error('狼人应包含队友信息');
-  });
-});
-
 describe('getCurrentTask', () => {
   it('返回非空字符串', () => {
     const context = { players: mockPlayers, alivePlayers: mockPlayers };

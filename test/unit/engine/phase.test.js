@@ -27,7 +27,7 @@ describe('PHASE_FLOW 结构', () => {
     if (cupidPhase.condition(harness2.game)) throw new Error('第二夜丘比特不应执行');
   });
 
-  it('守卫只在守卫存活时执行', () => {
+  it('守卫在板子存在守卫时始终执行（避免信息泄露）', () => {
     const guardPhase = PHASE_FLOW.find(p => p.id === PHASE.GUARD);
     const harness = createGame({ presetId: '9-standard' });
     if (guardPhase.condition(harness.game)) throw new Error('9人局没有守卫');
@@ -35,7 +35,7 @@ describe('PHASE_FLOW 结构', () => {
     if (!guardPhase.condition(harness2.game)) throw new Error('12人局有守卫，应为true');
     const guard = harness2.game.players.find(p => p.role.id === 'guard');
     guard.alive = false;
-    if (guardPhase.condition(harness2.game)) throw new Error('守卫死亡后不应执行');
+    if (!guardPhase.condition(harness2.game)) throw new Error('守卫死亡后仍应执行（避免信息泄露）');
   });
 
   it('狼人讨论只在狼人存活时执行', () => {

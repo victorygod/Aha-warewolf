@@ -62,13 +62,9 @@ class VoteManager {
 
   // 广播投票结果
   _broadcastVoteResult(title, voteDetails, voteCounts) {
-    // 格式化票型
-    const voteLines = voteDetails.map(d => `${d.voter} → ${d.target}`);
-    const content = `${title}\n${voteLines.join('\n')}`;
-
     this.game.message.add({
       type: 'vote_result',
-      content: buildMessage('DAY_VOTE', { 票型: formatVoteDetails(voteDetails) }),
+      content: buildMessage('DAY_VOTE', { 票型: formatVoteDetails(voteDetails, voteCounts) }),
       voteDetails,
       voteCounts,
       visibility: VISIBILITY.PUBLIC
@@ -96,6 +92,7 @@ class VoteManager {
     if (deathResult.cancelled) return;
 
     this.game.lastWordsPlayer = deathResult.lastWordsPlayer;
+    this.game.banishedPlayer = maxPlayer;
 
     // 添加放逐死亡公告
     this.game.message.add({

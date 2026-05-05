@@ -33,7 +33,7 @@ function loadStrategyGuide(presetId, roleId) {
   return '';
 }
 
-function buildSystemPrompt(player, game, background) {
+function _buildGameContext(player, game) {
   const role = player.role;
   const roleId = role.id || role;
   const roleName = ROLE_NAMES[roleId] || roleId;
@@ -55,7 +55,6 @@ function buildSystemPrompt(player, game, background) {
 
   const presetId = game.presetId || game.preset?.name?.replace('人', '-') || '';
   const strategyGuide = loadStrategyGuide(presetId, roleId);
-
   const strategySection = strategyGuide ? `\n\n【角色攻略】\n${strategyGuide}\n` : '';
 
   const playersList = (game.players || []).map((p, i) => {
@@ -63,15 +62,25 @@ function buildSystemPrompt(player, game, background) {
     return `${i + 1}号:${p.name}${suffix}`;
   }).join('，');
 
-  const backgroundSection = background ? `\n\n【背景】\n${background}` : '';
+  return { position, roleName, wolfTeammates, rulesText, strategySection, playersList };
+}
 
-  return `你在参与一场狼人杀游戏，你的名字:${player.name} 位置:${position}号位 角色:${roleName}${wolfTeammates}
-本局玩家：${playersList}
+function buildSystemPrompt(player, options = {}) {
+  const { game, mode = 'game' } = options;
+  const backgroundSection = player.background ? `\n【背景】\n${player.background}` : '';
+
+  if (mode === 'chat') {
+    return `你是${player.name}。${backgroundSection}\n${SYSTEM_MESSAGE_SUFFIX}`;
+  }
+
+  const ctx = _buildGameContext(player, game);
+  return `你是${player.name}。${backgroundSection}
+你在参与一场狼人杀游戏，你的位置:${ctx.position}号位 角色:${ctx.roleName}${ctx.wolfTeammates}
+本局玩家：${ctx.playersList}
 【特殊规则】
-${rulesText}
+${ctx.rulesText}
 【参考策略】
-${strategySection}
-${backgroundSection}
+${ctx.strategySection}
 ${SYSTEM_MESSAGE_SUFFIX}`;
 }
 
@@ -83,7 +92,7 @@ const CURRENT_TASK = {
   [ACTION.NIGHT_WEREWOLF_VOTE]: (aliveList) => `【狼人投票】可选玩家：\n${aliveList}\n请调用 action_night_werewolf_vote 工具选择今晚要击杀的玩家，或弃权。`,
   [ACTION.SEER]: (aliveList) => `【预言家】可选玩家：\n${aliveList}\n请调用 action_seer 工具选择要查验的玩家。`,
   [ACTION.GUARD]: (aliveList) => `【守卫】可选玩家：\n${aliveList}\n请调用 action_guard 工具选择要守护的玩家。`,
-  [ACTION.DAY_DISCUSS]: () => '【白天发言】轮到你发言了，请分析局势，调用 action_day_discuss 工具简要发言，注意避免信息泄露，提到他人时务必采用名字，可调侃，100字以内。',
+  [ACTION.DAY_DISCUSS]: () => '【白天发言】轮到你发言了，请分析局势，调用 action_day_discuss 工具简要发言，注意避免信息泄露，提到他人时务必采用名字，不可只用序号，可多多调侃，以普通白话文为主，150字以内。',
   [ACTION.DAY_VOTE]: (aliveList, context) => {
     const allowedTargets = context?.extraData?.allowedTargets;
     let targetList = aliveList;
@@ -148,6 +157,23 @@ const CURRENT_TASK = {
       }).join('\n');
     }
     return `【指定发言顺序】可选玩家：\n${targetList}\n你是警长，请调用 action_assignOrder 工具指定从哪位玩家开始发言。`;
+  },
+  [ACTION.CHAT]: (_aliveList, context) => {
+    const chatContext = context?.extraData?.chatContext || {};
+    const event = chatContext.event;
+    if (event === 'game_over') {
+      const winner = chatContext.winner || '未知';
+      const playersInfo = chatContext.playersInfo || '';
+      return `【游戏结束】${winner}获胜！\n${playersInfo}\n如果你有什么想说的，请调用 action_chat 工具发言，支持 @名字。不想说话可以跳过。`;
+    }
+    if (event === 'mentioned') {
+      const mentioner = chatContext.mentioner || '某人';
+      const mentionContent = chatContext.mentionContent || '';
+      const recentChat = chatContext.recentChat || '';
+      const chatSection = recentChat ? `\n\n最近聊天：\n${recentChat}` : '';
+      return `【有人@你】${mentioner} 提到了你："${mentionContent}"${chatSection}\n如果你想回应，请调用 action_chat 工具发言，支持 @名字。不想回应可以跳过。`;
+    }
+    return '【聊天室】你可以在聊天室自由发言，打招呼、讨论角色偏好、闲聊都行。请调用 action_chat 工具发言，支持 @名字。不想说话可以跳过。';
   }
 };
 
@@ -165,7 +191,7 @@ function getCurrentTask(action, context) {
 }
 
 function isSpeech(action) {
-  return [ACTION.DAY_DISCUSS, ACTION.LAST_WORDS, ACTION.SHERIFF_SPEECH, ACTION.NIGHT_WEREWOLF_DISCUSS].includes(action);
+  return [ACTION.DAY_DISCUSS, ACTION.LAST_WORDS, ACTION.SHERIFF_SPEECH, ACTION.NIGHT_WEREWOLF_DISCUSS, ACTION.CHAT].includes(action);
 }
 
 function buildCurrentTurn(newContent, action, context, profile) {

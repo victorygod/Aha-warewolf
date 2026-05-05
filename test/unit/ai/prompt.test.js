@@ -65,28 +65,28 @@ describe('prompt - buildSystemPrompt', () => {
   it('返回字符串', () => {
     const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {} };
     const game = { players: [], round: 1, effectiveRules: {} };
-    const result = buildSystemPrompt(player, game);
+    const result = buildSystemPrompt(player, { game });
     if (typeof result !== 'string') throw new Error('应返回字符串');
   });
 
   it('包含角色信息', () => {
     const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {} };
     const game = { players: [], round: 1, effectiveRules: {} };
-    const result = buildSystemPrompt(player, game);
+    const result = buildSystemPrompt(player, { game });
     if (!result.includes('预言家')) throw new Error('应包含角色名');
   });
 
   it('包含背景信息', () => {
-    const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {} };
+    const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {}, background: '这是背景故事' };
     const game = { players: [], round: 1, effectiveRules: {} };
-    const result = buildSystemPrompt(player, game, '这是背景故事');
+    const result = buildSystemPrompt(player, { game });
     if (!result.includes('这是背景故事')) throw new Error('应包含背景信息');
   });
 
   it('无背景时不添加背景段', () => {
-    const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {} };
+    const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {}, background: '' };
     const game = { players: [], round: 1, effectiveRules: {} };
-    const result = buildSystemPrompt(player, game, '');
+    const result = buildSystemPrompt(player, { game });
     if (result.includes('【背景】')) throw new Error('无背景时不应出现【背景】');
   });
 });

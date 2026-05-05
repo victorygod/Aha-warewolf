@@ -10,26 +10,28 @@
 }
 
 :root {
-  --elation-pink: #ff6b9d;
-  --elation-purple: #c77dff;
-  --elation-cyan: #7df9ff;
-  --elation-gold: #ffd166;
+  --red: #E60012;
+  --red-dark: #8B0000;
+  --gold: #FFD700;
+  --gold-dark: #F0C040;
+  --white: #FFFFFF;
+  --black: #0D0D0D;
+  --black-light: #1A1A1A;
 
-  --bg-deep: #0d0a1a;
-  --bg-mid: #1a1035;
-  --bg-surface: rgba(255, 107, 157, 0.06);
+  --wolf-crimson: #E60012;
+  --good-cyan: #FFFFFF;
+  --death-purple: #4A0000;
+  --vote-gold: #FFD700;
+  --sheriff-gold: #F0C040;
+  --action-default: #E60012;
 
-  --wolf-crimson: #ff4d6a;
-  --good-cyan: #7df9ff;
-  --death-purple: #9b59b6;
-  --vote-gold: #ffd166;
-  --sheriff-gold: #f0c040;
+  --bg-deep: #0D0D0D;
+  --bg-mid: #1A1A1A;
+  --bg-surface: rgba(230, 0, 18, 0.06);
 
-  --action-default: #c77dff;
-
-  --text-primary: #f0e6ff;
-  --text-secondary: #a89cc8;
-  --text-muted: #6b5f8a;
+  --text-primary: #FFFFFF;
+  --text-secondary: #B0B0B0;
+  --text-muted: #666666;
 }
 
 body {
@@ -43,19 +45,21 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
+  transition: background-color 1.5s ease;
 }
 
 body::after {
   content: '';
   position: fixed;
   inset: 0;
-  background: linear-gradient(170deg, rgba(13,10,26,0.75) 0%, rgba(26,16,53,0.6) 50%, rgba(13,10,26,0.75) 100%);
+  background: transparent;
   pointer-events: none;
   z-index: 0;
+  transition: background 1.5s ease;
 }
 
 body.phase-night {
-  background-color: #0d0a1a;
+  background-color: #0D0D0D;
   background-image: url('/assets/areas/phantasmoon_courtyard.webp');
   background-attachment: fixed;
   background-size: cover;
@@ -63,10 +67,10 @@ body.phase-night {
 }
 
 body.phase-night::after {
-  background: linear-gradient(170deg, rgba(13,10,26,0.88) 0%, rgba(26,16,53,0.82) 50%, rgba(13,10,26,0.88) 100%);
+  background: rgba(0, 0, 0, 0.55);
 }
 
-body.phase-night::before {
+body::before {
   content: '';
   position: fixed;
   top: -20vh;
@@ -74,13 +78,18 @@ body.phase-night::before {
   width: 40vw;
   height: 40vw;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(125,249,255,0.08) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(230,0,18,0) 0%, transparent 70%);
   pointer-events: none;
   z-index: 1;
+  transition: background 1.5s ease;
+}
+
+body.phase-night::before {
+  background: radial-gradient(circle, rgba(230,0,18,0.06) 0%, transparent 70%);
 }
 
 body.phase-day {
-  background-color: #1a1520;
+  background-color: #1A1A1A;
   background-image: url('/assets/areas/phantasmoon_courtyard.webp');
   background-attachment: fixed;
   background-size: cover;
@@ -88,18 +97,19 @@ body.phase-day {
 }
 
 body.phase-day::after {
-  background: linear-gradient(170deg, rgba(26,21,32,0.7) 0%, rgba(42,31,42,0.55) 50%, rgba(26,21,32,0.7) 100%);
+  background: transparent;
 }
 
 #app {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   position: relative;
   z-index: 1;
   max-width: 100vw;
   margin: 0 auto;
+  overflow: hidden;
 }
 
 @media (min-width: 540px) {
@@ -110,25 +120,31 @@ body.phase-day::after {
 
 /* 头部 */
 #header {
-  background: rgba(13, 10, 26, 0.9);
+  background: rgba(13, 13, 13, 0.9);
   padding: 10px 16px;
   text-align: center;
   position: sticky;
   top: 0;
   z-index: 100;
   cursor: pointer;
-  border-bottom: 1px solid rgba(199, 125, 255, 0.15);
+  border-bottom: 1px solid rgba(230, 0, 18, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
   flex-wrap: wrap;
   min-height: 40px;
+  flex-shrink: 0;
 }
 
 #phase-info {
   font-size: 14px;
   font-weight: 600;
+}
+
+body.phase-waiting #phase-info {
+  font-size: 22px;
+  font-weight: 700;
 }
 
 #day-count {
@@ -154,18 +170,24 @@ body.phase-day::after {
   font-weight: 600;
 }
 
-.role-badge.werewolf { background: rgba(255, 77, 106, 0.5); }
-.role-badge.seer { background: rgba(125, 249, 255, 0.3); }
-.role-badge.witch { background: rgba(199, 125, 255, 0.4); }
-.role-badge.guard { background: rgba(125, 249, 255, 0.3); }
-.role-badge.hunter { background: rgba(255, 209, 102, 0.4); }
-.role-badge.villager { background: rgba(168, 156, 200, 0.3); }
-.role-badge.idiot { background: rgba(255, 209, 102, 0.4); }
-.role-badge.cupid { background: rgba(255, 107, 157, 0.4); }
+.role-badge.werewolf { background: rgba(230, 0, 18, 0.5); }
+.role-badge.seer { background: rgba(255, 255, 255, 0.3); }
+.role-badge.witch { background: rgba(230, 0, 18, 0.4); }
+.role-badge.guard { background: rgba(255, 255, 255, 0.3); }
+.role-badge.hunter { background: rgba(255, 215, 0, 0.4); }
+.role-badge.villager { background: rgba(176, 176, 176, 0.3); }
+.role-badge.idiot { background: rgba(255, 215, 0, 0.4); }
+.role-badge.cupid { background: rgba(230, 0, 18, 0.4); }
 
 .teammates {
   color: var(--text-secondary);
   margin-left: 8px;
+}
+
+.couple-info {
+  color: #FF69B4;
+  margin-left: 8px;
+  font-size: 12px;
 }
 
 /* 两侧玩家列 */
@@ -211,12 +233,20 @@ body.phase-gameover #players-right {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  background: rgba(10, 10, 12, 0.55);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  padding: 12px 12px 0 12px;
 }
 
 body.phase-waiting #main-content,
 body.phase-gameover #main-content {
   margin-left: 0;
   margin-right: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .player-card {
@@ -233,7 +263,7 @@ body.phase-gameover #main-content {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 2px solid var(--elation-purple);
+  border: 2px solid var(--red);
   object-fit: cover;
   background: var(--bg-deep);
 }
@@ -251,17 +281,17 @@ body.phase-gameover #main-content {
 
 .player-card.current .player-avatar {
   animation: elationPulse 1.5s ease-in-out infinite;
-  box-shadow: 0 0 12px var(--elation-pink), 0 0 24px var(--elation-purple);
+  box-shadow: 0 0 12px var(--red), 0 0 24px var(--red-dark);
 }
 
 .player-card.current .player-name {
-  color: var(--elation-pink);
-  text-shadow: 0 0 8px rgba(255, 107, 157, 0.5);
+  color: var(--red);
+  text-shadow: 0 0 8px rgba(230, 0, 18, 0.5);
 }
 
 @keyframes elationPulse {
-  0%, 100% { box-shadow: 0 0 12px var(--elation-pink), 0 0 24px var(--elation-purple); }
-  50% { box-shadow: 0 0 20px var(--elation-pink), 0 0 40px var(--elation-purple); }
+  0%, 100% { box-shadow: 0 0 12px var(--red), 0 0 24px var(--red-dark); }
+  50% { box-shadow: 0 0 20px var(--red), 0 0 40px var(--red-dark); }
 }
 
 .player-card.self {
@@ -273,7 +303,7 @@ body.phase-gameover #main-content {
   position: absolute;
   top: 4px;
   right: 2px;
-  background: var(--elation-pink);
+  background: var(--red);
   color: #fff;
   font-size: 9px;
   padding: 1px 4px;
@@ -290,12 +320,12 @@ body.phase-gameover #main-content {
 }
 
 .player-card.empty-slot .player-avatar {
-  border: 2px dashed rgba(199, 125, 255, 0.3);
+  border: 2px dashed rgba(230, 0, 18, 0.3);
   opacity: 0.4;
 }
 
 .player-card.empty-slot:hover .player-avatar {
-  border-color: var(--elation-purple);
+  border-color: var(--red);
   opacity: 0.7;
 }
 
@@ -305,25 +335,42 @@ body.phase-gameover #main-content {
   margin-top: 2px;
 }
 
-/* 警徽样式 */
-.player-card .sheriff-badge {
+/* 头像容器 - 用于定位警徽 */
+.player-avatar-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* 警徽样式 - 覆盖在头像右下角 */
+.player-avatar-wrapper .sheriff-badge {
   position: absolute;
-  top: -2px;
-  left: 2px;
+  bottom: -4px;
+  right: -4px;
   font-size: 14px;
-  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
   animation: sheriffPulse 2s infinite;
   z-index: 10;
 }
 
+/* 警长玩家卡片特殊样式 */
+.player-card.sheriff .player-avatar {
+  border-color: var(--sheriff-gold);
+  box-shadow: 0 0 8px rgba(240, 192, 64, 0.5);
+}
+
+.player-card.sheriff .player-name {
+  color: var(--sheriff-gold);
+}
+
 @keyframes sheriffPulse {
-  0%, 100% { transform: translateX(-50%) scale(1); }
-  50% { transform: translateX(-50%) scale(1.1); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 
 .player-position {
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
   margin-bottom: 2px;
 }
 
@@ -337,15 +384,9 @@ body.phase-gameover #main-content {
   color: var(--text-primary);
 }
 
-.player-status {
-  font-size: 10px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
 .player-role {
   font-size: 10px;
-  color: var(--elation-gold);
+  color: var(--gold);
   margin-top: 2px;
 }
 
@@ -354,9 +395,7 @@ body.phase-gameover #main-content {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-  min-height: 200px;
-  max-height: calc(100vh - 100px);
-  max-height: calc(100dvh - 100px);
+  min-height: 0;
 }
 
 .message {
@@ -366,18 +405,18 @@ body.phase-gameover #main-content {
 
 .message-sender {
   font-size: 12px;
-  color: var(--elation-purple);
+  color: var(--red);
   margin-bottom: 2px;
 }
 
 .message-content {
-  background: rgba(199, 125, 255, 0.08);
+  background: rgba(26, 26, 26, 0.8);
   padding: 8px 12px;
   border-radius: 12px;
   font-size: 14px;
   line-height: 1.4;
   word-break: break-word;
-  border-left: 3px solid var(--elation-purple);
+  border-left: 3px solid var(--red);
 }
 
 .message.system {
@@ -385,138 +424,275 @@ body.phase-gameover #main-content {
 }
 
 .message.system .message-content {
-  background: rgba(199, 125, 255, 0.06);
-  color: var(--text-secondary);
+  background: rgba(80, 0, 5, 0.85);
+  color: var(--text-primary);
   font-size: 13px;
   border-left: none;
-  border-top: 2px solid rgba(199, 125, 255, 0.3);
+  border-top: 2px solid rgba(230, 0, 18, 0.7);
 }
 
 .message.system.opening .message-content {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.75);
   color: var(--text-primary);
   font-size: 16px;
   font-weight: bold;
 }
 
 .message.system.death .message-content {
-  background: rgba(255, 77, 106, 0.15);
-  color: var(--wolf-crimson);
-  border-left: 3px solid var(--wolf-crimson);
+  background: rgba(80, 0, 5, 0.85);
+  color: #FF6B6B;
+  border-left: 3px solid #FF6B6B;
+}
+
+.message.system.peaceful .message-content {
+  background: rgba(20, 30, 50, 0.85);
+  color: #A0C4E8;
+  border-left: 3px solid #A0C4E8;
 }
 
 .message.system.exiled .message-content {
-  background: rgba(255, 209, 102, 0.15);
-  color: var(--elation-gold);
-  border-left: 3px solid var(--elation-gold);
+  background: rgba(60, 40, 0, 0.85);
+  color: #FFD700;
+  border-left: 3px solid #FFD700;
 }
 
 .message.system.vote .message-content {
-  background: rgba(125, 249, 255, 0.1);
-  color: var(--elation-cyan);
-  border-left: 3px solid var(--elation-cyan);
+  background: rgba(20, 20, 20, 0.85);
+  color: var(--white);
+  border-left: 3px solid #CCCCCC;
   white-space: pre-line;
 }
 
 .message.system.gameover .message-content {
-  background: rgba(255, 209, 102, 0.2);
-  color: var(--elation-gold);
-  border-left: 3px solid var(--elation-gold);
+  background: rgba(60, 40, 0, 0.85);
+  color: #FFD700;
+  border-left: 3px solid #FFD700;
   white-space: pre-line;
   font-weight: bold;
 }
 
 .message.system.lastwords .message-content {
-  background: rgba(155, 89, 182, 0.2);
-  color: #bb8fce;
-  border-left: 3px solid var(--death-purple);
+  background: rgba(50, 0, 0, 0.85);
+  color: #C8A0A0;
+  border-left: 3px solid #8B4444;
   white-space: pre-line;
-  opacity: 0.85;
   font-style: italic;
 }
 
 .message.wolf-channel .message-content {
-  background: rgba(26, 16, 53, 0.8);
+  background: rgba(26, 26, 26, 0.8);
   border-left: 3px solid var(--wolf-crimson);
 }
 
 /* 狼人刀人投票结果 */
 .message.wolf-vote-result .message-content {
-  background: rgba(26, 16, 53, 0.6);
+  background: rgba(26, 26, 26, 0.85);
   border-left: 3px solid var(--wolf-crimson);
 }
 
+/* 投票结果 */
+.message.vote-result .message-content {
+  background: rgba(26, 26, 26, 0.85);
+  border-left: 3px solid var(--vote-gold);
+}
+
+.message.vote-result .vote-title {
+  color: var(--vote-gold);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.message.vote-result .vote-details {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.message.vote-result .vote-final {
+  color: var(--wolf-crimson);
+  font-weight: 600;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(230, 0, 18, 0.2);
+}
+
+/* 投票平局 */
+.message.vote-tie .message-content {
+  background: rgba(60, 40, 0, 0.85);
+  border-left: 3px solid #FFA500;
+  color: #FFA500;
+}
+
+/* 警长候选人 */
+.message.sheriff-candidates .message-content {
+  background: rgba(60, 40, 0, 0.85);
+  border-left: 3px solid var(--sheriff-gold);
+}
+
+/* 警长选出 */
+.message.sheriff-elected .message-content {
+  background: rgba(60, 40, 0, 0.85);
+  border-left: 3px solid var(--sheriff-gold);
+  color: var(--sheriff-gold);
+  font-weight: 600;
+}
+
+/* 死亡公告 */
+.message.death-announce {
+  text-align: center;
+}
+
+.message.death-announce .message-content {
+  background: rgba(80, 0, 5, 0.85);
+  border-left: 3px solid #FF6B6B;
+  color: #FF6B6B;
+}
+
+.message.death-announce .death-announce {
+  color: #FF6B6B;
+  padding: 4px 0;
+}
+
 .message.private .message-content {
-  background: rgba(199, 125, 255, 0.1);
-  border-left: 3px solid var(--elation-purple);
+  background: rgba(15, 35, 70, 0.8);
+  border-left: 3px solid #5B9BD5;
   border-style: dashed;
   border-left-style: dashed;
-  color: var(--elation-cyan);
+  color: #D6E8FF;
 }
 
 .message.ai-thinking .message-content {
-  color: var(--text-muted);
+  color: #999;
   font-style: italic;
+}
+
+/* 微信风格聊天气泡 */
+.chat-message {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.chat-message.self {
+  flex-direction: row-reverse;
+}
+
+.chat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.chat-body {
+  max-width: 70%;
+  min-width: 0;
+}
+
+.chat-name {
+  font-size: 11px;
+  color: #CCC;
+  margin-bottom: 3px;
+  padding: 0 4px;
+}
+
+.chat-sheriff-mark {
+  color: var(--sheriff-gold);
+  font-size: 12px;
+  margin-right: 2px;
+}
+
+.chat-message.self .chat-name {
+  text-align: right;
+}
+
+.chat-bubble {
+  background: rgba(40, 40, 40, 0.9);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+  position: relative;
+}
+
+.chat-message.self .chat-bubble {
+  background: rgba(0, 80, 40, 0.9);
+}
+
+.chat-message.wolf-channel .chat-bubble {
+  background: rgba(40, 10, 10, 0.9);
+  border-left: 3px solid var(--wolf-crimson);
+}
+
+.chat-message.last-words .chat-bubble {
+  background: rgba(50, 0, 0, 0.85);
+  color: #C8A0A0;
+  font-style: italic;
+  border-left: 3px solid #8B4444;
 }
 
 /* 消息标签样式 */
 .msg-tag {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 12px;
-  margin-right: 4px;
-  font-weight: 500;
+  display: none;
 }
 
 .msg-speech {
-  background: rgba(125, 249, 255, 0.15);
-  color: var(--elation-cyan);
+  display: none;
 }
 
 .msg-last-words {
-  background: rgba(155, 89, 182, 0.2);
-  color: var(--death-purple);
+  background: rgba(74, 0, 0, 0.6);
+  color: #C07070;
 }
 
 .msg-wolf-speech {
-  background: rgba(255, 77, 106, 0.2);
-  color: var(--wolf-crimson);
+  background: rgba(80, 0, 5, 0.5);
+  color: #FF4444;
 }
 
 .msg-sheriff-speech {
-  background: rgba(255, 209, 102, 0.2);
-  color: var(--elation-gold);
+  background: rgba(60, 40, 0, 0.5);
+  color: #FFD700;
 }
 
 .msg-system {
-  background: rgba(107, 95, 138, 0.3);
-  color: var(--text-muted);
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-right: 6px;
+  font-weight: 600;
+  background: rgba(80, 0, 5, 0.5);
+  color: #FF4444;
 }
 
 .msg-private {
-  background: rgba(199, 125, 255, 0.2);
-  color: var(--elation-purple);
+  background: rgba(15, 35, 70, 0.5);
+  color: #7BB8E8;
 }
 
 .msg-sheriff {
-  background: rgba(240, 192, 64, 0.2);
-  color: var(--sheriff-gold);
+  background: rgba(60, 40, 0, 0.5);
+  color: #FFD700;
 }
 
 .msg-vote {
-  background: rgba(125, 249, 255, 0.15);
-  color: var(--elation-cyan);
+  background: rgba(40, 40, 40, 0.6);
+  color: #CCCCCC;
 }
 
 .msg-death {
-  background: rgba(255, 77, 106, 0.2);
-  color: var(--wolf-crimson);
+  background: rgba(80, 0, 5, 0.5);
+  color: #FF6B6B;
 }
 
 .msg-game-over {
-  background: rgba(255, 209, 102, 0.2);
-  color: var(--elation-gold);
+  background: rgba(60, 40, 0, 0.5);
+  color: #FFD700;
   font-weight: bold;
 }
 
@@ -532,28 +708,67 @@ body.phase-gameover #main-content {
   content: '';
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(199,125,255,0.3), transparent);
+  background: linear-gradient(90deg, transparent, rgba(230,0,18,0.3), transparent);
 }
 
-.phase-divider span {
+.phase-divider:not(.day):not(.night) span {
   padding: 4px 16px;
-  background: rgba(199, 125, 255, 0.1);
+  background: rgba(26, 26, 26, 0.9);
   border-radius: 12px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  border: 1px solid rgba(230, 0, 18, 0.3);
+  white-space: nowrap;
+}
+
+.phase-divider.day span,
+.phase-divider.night span {
+  padding: 4px 16px;
+  border-radius: 12px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .phase-divider.night span {
-  background: linear-gradient(135deg, var(--bg-deep), #2a1a4a);
-  color: var(--elation-cyan);
-  border: 1px solid rgba(125, 249, 255, 0.2);
+  background: linear-gradient(135deg, #0a0a1a, #1a1a2e);
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
 }
 
 .phase-divider.day span {
-  background: linear-gradient(135deg, #2a1f0a, #1a1520);
-  color: var(--elation-gold);
-  border: 1px solid rgba(255, 209, 102, 0.2);
+  background: linear-gradient(135deg, #2a1a0a, #1a1a1a);
+  color: var(--gold);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.1);
+}
+
+.game-brief-divider {
+  display: flex;
+  align-items: center;
+  margin: 12px 0;
+  gap: 10px;
+}
+
+.game-brief-line {
+  flex: 1;
+  height: 2px;
+  background: rgba(230, 0, 18, 0.4);
+  border-radius: 2px;
+}
+
+.game-brief-content {
+  padding: 6px 14px;
+  background: rgba(26, 26, 26, 0.95);
+  border-radius: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: pre-line;
+  word-break: break-word;
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.6;
+  border: 1px solid rgba(230, 0, 18, 0.2);
 }
 
 @keyframes fadeIn {
@@ -563,16 +778,29 @@ body.phase-gameover #main-content {
 
 /* 操作区域 */
 #action-section {
-  background: rgba(13, 10, 26, 0.9);
-  padding: 12px;
-  border-top: 1px solid rgba(199, 125, 255, 0.15);
-  margin-top: auto;
+  background: rgba(13, 13, 13, 0.9);
+  padding: 8px 12px;
+  border-top: 1px solid rgba(230, 0, 18, 0.15);
+  flex-shrink: 0;
+  position: relative;
+  margin-left: -68px;
+  margin-right: -68px;
+  padding-left: 80px;
+  padding-right: 80px;
+}
+
+body.phase-waiting #action-section,
+body.phase-gameover #action-section {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 12px;
+  padding-right: 12px;
 }
 
 #action-prompt {
   font-size: 14px;
-  color: var(--elation-gold);
-  margin-bottom: 8px;
+  color: var(--gold);
+  margin-bottom: 4px;
   text-align: center;
 }
 
@@ -588,13 +816,13 @@ body.phase-gameover #main-content {
 #speech-input {
   flex: 1;
   padding: 10px 14px;
-  border: 1px solid var(--elation-purple);
+  border: 1px solid var(--red);
   border-radius: 20px;
-  background: rgba(199, 125, 255, 0.08);
+  background: rgba(230, 0, 18, 0.08);
   color: var(--text-primary);
   font-size: 14px;
   outline: none;
-  box-shadow: 0 0 8px rgba(199, 125, 255, 0.2);
+  box-shadow: 0 0 8px rgba(230, 0, 18, 0.2);
 }
 
 #speech-input::placeholder {
@@ -602,8 +830,8 @@ body.phase-gameover #main-content {
 }
 
 #speech-input:focus {
-  border-color: var(--elation-cyan);
-  box-shadow: 0 0 12px rgba(125, 249, 255, 0.3);
+  border-color: var(--white);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 
 #send-btn {
@@ -621,6 +849,34 @@ body.phase-gameover #main-content {
   transform: scale(0.95);
 }
 
+.inline-btn {
+  padding: 7px 14px;
+  border: 1px solid rgba(230, 0, 18, 0.4);
+  border-radius: 16px;
+  background: rgba(230, 0, 18, 0.1);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.inline-btn:hover {
+  background: rgba(230, 0, 18, 0.2);
+  border-color: var(--red);
+}
+
+.inline-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.inline-btn.start-game-btn {
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
+  border-color: var(--red);
+  animation: pulse 2s ease-in-out infinite;
+}
+
 #vote-buttons, #skill-buttons {
   display: none;
   flex-wrap: wrap;
@@ -634,7 +890,7 @@ body.phase-gameover #main-content {
 
 .vote-btn, .skill-btn {
   padding: 8px 16px;
-  background: rgba(199, 125, 255, 0.08);
+  background: rgba(230, 0, 18, 0.08);
   color: var(--text-primary);
   border: 1px solid var(--action-default);
   border-radius: 16px;
@@ -646,11 +902,11 @@ body.phase-gameover #main-content {
 .vote-btn:hover, .skill-btn:hover {
   background: var(--action-default);
   border-color: var(--action-default);
-  box-shadow: 0 0 10px rgba(199, 125, 255, 0.3);
+  box-shadow: 0 0 10px rgba(230, 0, 18, 0.3);
 }
 
 .vote-btn.danger, .skill-btn.danger {
-  background: rgba(255, 77, 106, 0.15);
+  background: rgba(230, 0, 18, 0.15);
   border-color: var(--wolf-crimson);
   color: var(--wolf-crimson);
 }
@@ -663,11 +919,11 @@ body.phase-gameover #main-content {
 .vote-btn.skip, .skill-btn.skip {
   transform: scale(0.95);
   border-color: var(--text-muted);
-  background: rgba(107, 95, 138, 0.1);
+  background: rgba(102, 102, 102, 0.1);
 }
 
 .vote-btn.wolf-target, .skill-btn.wolf-target {
-  background: rgba(255, 77, 106, 0.15);
+  background: rgba(230, 0, 18, 0.15);
   border-color: var(--wolf-crimson);
   color: var(--wolf-crimson);
 }
@@ -678,7 +934,7 @@ body.phase-gameover #main-content {
 }
 
 .skill-btn.heal {
-  background: rgba(199, 125, 255, 0.08);
+  background: rgba(230, 0, 18, 0.08);
   border-color: var(--action-default);
 }
 
@@ -687,7 +943,7 @@ body.phase-gameover #main-content {
 }
 
 .skill-btn.poison {
-  background: rgba(199, 125, 255, 0.08);
+  background: rgba(230, 0, 18, 0.08);
   border-color: var(--action-default);
   padding: 6px 12px;
   font-size: 12px;
@@ -698,7 +954,7 @@ body.phase-gameover #main-content {
 }
 
 .skill-btn.skip {
-  background: rgba(107, 95, 138, 0.1);
+  background: rgba(102, 102, 102, 0.1);
   border-color: var(--text-muted);
 }
 
@@ -707,7 +963,7 @@ body.phase-gameover #main-content {
   background: var(--action-default) !important;
   border-color: var(--action-default) !important;
   color: #fff !important;
-  box-shadow: 0 0 12px rgba(199, 125, 255, 0.5);
+  box-shadow: 0 0 12px rgba(230, 0, 18, 0.5);
 }
 
 /* 禁用状态 */
@@ -717,7 +973,7 @@ body.phase-gameover #main-content {
 }
 
 .skill-btn:disabled:hover {
-  background: rgba(199, 125, 255, 0.08);
+  background: rgba(230, 0, 18, 0.08);
   border-color: var(--action-default);
   box-shadow: none;
 }
@@ -729,7 +985,7 @@ body.phase-gameover #main-content {
   gap: 8px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(199, 125, 255, 0.15);
+  border-top: 1px solid rgba(230, 0, 18, 0.15);
 }
 
 .poison-section span {
@@ -744,7 +1000,7 @@ body.phase-gameover #main-content {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(13, 10, 26, 0.95);
+  background: rgba(13, 13, 13, 0.95);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -778,17 +1034,17 @@ body.phase-gameover #main-content {
 .form-group input, .form-group select {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid rgba(199, 125, 255, 0.3);
+  border: 1px solid rgba(230, 0, 18, 0.3);
   border-radius: 8px;
-  background: rgba(199, 125, 255, 0.08);
+  background: rgba(230, 0, 18, 0.08);
   color: var(--text-primary);
   font-size: 16px;
   outline: none;
 }
 
 .form-group input:focus, .form-group select:focus {
-  border-color: var(--elation-purple);
-  box-shadow: 0 0 8px rgba(199, 125, 255, 0.3);
+  border-color: var(--red);
+  box-shadow: 0 0 8px rgba(230, 0, 18, 0.3);
 }
 
 .form-group input::placeholder {
@@ -827,10 +1083,15 @@ body.phase-gameover #main-content {
   #main-content { margin-left: 56px; margin-right: 56px; }
   body.phase-waiting #main-content,
   body.phase-gameover #main-content { margin-left: 0; margin-right: 0; }
+  #action-section { margin-left: -56px; margin-right: -56px; padding-left: 68px; padding-right: 68px; }
+  body.phase-waiting #action-section,
+  body.phase-gameover #action-section { margin-left: 0; margin-right: 0; padding-left: 12px; padding-right: 12px; }
   .player-avatar { width: 32px; height: 32px; }
   .player-name { font-size: 10px; max-width: 48px; }
   .player-position { font-size: 9px; }
   .message-content { font-size: 13px; }
+  .chat-avatar { width: 28px; height: 28px; }
+  .chat-bubble { font-size: 13px; padding: 6px 10px; }
   .waiting-card { padding: 8px 10px; gap: 8px; }
   .waiting-card-name { font-size: 12px; }
   .waiting-btn { font-size: 10px; padding: 3px 8px; }
@@ -845,6 +1106,9 @@ body.phase-gameover #main-content {
   #main-content { margin-left: 76px; margin-right: 76px; }
   body.phase-waiting #main-content,
   body.phase-gameover #main-content { margin-left: 0; margin-right: 0; }
+  #action-section { margin-left: -76px; margin-right: -76px; padding-left: 88px; padding-right: 88px; }
+  body.phase-waiting #action-section,
+  body.phase-gameover #action-section { margin-left: 0; margin-right: 0; padding-left: 12px; padding-right: 12px; }
   .player-avatar { width: 44px; height: 44px; }
   .player-name { font-size: 12px; max-width: 68px; }
   .transition-char { font-size: 90px; }
@@ -860,7 +1124,7 @@ body.phase-gameover #main-content {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(199, 125, 255, 0.3);
+  background: rgba(230, 0, 18, 0.3);
   border-radius: 3px;
 }
 
@@ -894,21 +1158,21 @@ body.phase-gameover #main-content {
 .preset-option {
   padding: 12px;
   margin-bottom: 8px;
-  border: 2px solid rgba(199, 125, 255, 0.15);
+  border: 2px solid rgba(230, 0, 18, 0.15);
   border-radius: 10px;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
 }
 
 .preset-option:hover {
-  border-color: rgba(199, 125, 255, 0.4);
-  background: rgba(199, 125, 255, 0.05);
+  border-color: rgba(230, 0, 18, 0.4);
+  background: rgba(230, 0, 18, 0.05);
 }
 
 .preset-option.selected {
-  border-color: var(--elation-purple) !important;
-  background: rgba(199, 125, 255, 0.15) !important;
-  box-shadow: 0 0 12px rgba(199, 125, 255, 0.3);
+  border-color: var(--red) !important;
+  background: rgba(230, 0, 18, 0.15) !important;
+  box-shadow: 0 0 12px rgba(230, 0, 18, 0.3);
 }
 
 .preset-option.disabled {
@@ -918,7 +1182,7 @@ body.phase-gameover #main-content {
 }
 
 .preset-option.disabled:hover {
-  border-color: rgba(199, 125, 255, 0.15);
+  border-color: rgba(230, 0, 18, 0.15);
   background: transparent;
 }
 
@@ -937,7 +1201,7 @@ body.phase-gameover #main-content {
 
 .preset-roles {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.85);
   margin-bottom: 4px;
 }
 
@@ -956,7 +1220,7 @@ body.phase-gameover #main-content {
 
 #preset-locked {
   font-size: 14px;
-  color: var(--elation-purple);
+  color: var(--red);
   padding: 10px 0;
 }
 
@@ -969,11 +1233,11 @@ body.phase-gameover #main-content {
   transform: translateY(-100%);
   max-height: 40vh;
   overflow-y: auto;
-  background: rgba(13, 10, 26, 0.95);
+  background: rgba(13, 13, 13, 0.95);
   padding: 16px;
   z-index: 150;
   transition: transform 0.3s ease;
-  border-bottom: 1px solid rgba(199, 125, 255, 0.2);
+  border-bottom: 1px solid rgba(230, 0, 18, 0.2);
 }
 
 #preset-panel.visible {
@@ -992,7 +1256,7 @@ body.phase-gameover #main-content {
   color: var(--text-secondary);
   margin-bottom: 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(199, 125, 255, 0.15);
+  border-bottom: 1px solid rgba(230, 0, 18, 0.15);
 }
 
 #preset-panel-rules {
@@ -1062,6 +1326,7 @@ body.phase-gameover #main-content {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: #000;
 }
 
 #night-transition.hidden {
@@ -1069,41 +1334,48 @@ body.phase-gameover #main-content {
 }
 
 .transition-bg {
-  position: absolute;
-  inset: 0;
-  background: url('/assets/characters/changyeyuexu.jpg') center / auto 100% no-repeat;
-  filter: brightness(0.3);
+  position: relative;
+  height: 100vh;
+  width: min(66.7vw, 100vw);
+  background: url('/assets/characters/changyeyuexu.jpg') center / contain no-repeat;
+  filter: brightness(1.0);
 }
 
 .transition-text {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(66.7vw, 100vw);
   z-index: 1;
   pointer-events: none;
+  display: flex;
 }
 
 .transition-col {
-  position: absolute;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .transition-left {
-  top: 12vh;
-  left: 8vw;
+  margin-top: 12%;
+  margin-left: 8%;
 }
 
 .transition-right {
-  bottom: 12vh;
-  right: 8vw;
+  margin-top: auto;
+  margin-bottom: 12%;
+  margin-left: auto;
+  margin-right: 8%;
 }
 
 .transition-char {
   font-size: 72px;
   font-weight: 900;
-  color: rgba(199, 125, 255, 0.95);
-  text-shadow: 0 0 20px rgba(199, 125, 255, 0.6), 0 0 40px rgba(199, 125, 255, 0.3);
+  color: rgba(230, 0, 18, 0.95);
+  text-shadow: 0 0 20px rgba(230, 0, 18, 0.6), 0 0 40px rgba(230, 0, 18, 0.3);
   opacity: 0;
   transform: scale(0.5) translateY(20px);
   animation: charAppear 0.4s ease-out forwards;
@@ -1164,7 +1436,7 @@ body.phase-gameover #main-content {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(13, 10, 26, 0.8);
+  background: rgba(13, 13, 13, 0.8);
 }
 
 #profile-popup-content {
@@ -1174,8 +1446,8 @@ body.phase-gameover #main-content {
   max-height: 80vh;
   border-radius: 16px;
   overflow: hidden;
-  border: 1px solid rgba(199, 125, 255, 0.3);
-  background: rgba(26, 16, 53, 0.95);
+  border: 1px solid rgba(230, 0, 18, 0.3);
+  background: rgba(26, 26, 26, 0.95);
 }
 
 #profile-popup-art {
@@ -1188,13 +1460,13 @@ body.phase-gameover #main-content {
   padding: 16px;
   position: relative;
   margin-top: -40px;
-  background: linear-gradient(transparent, rgba(26, 16, 53, 0.95));
+  background: linear-gradient(transparent, rgba(26, 26, 26, 0.95));
 }
 
 #profile-popup-name {
   font-size: 20px;
   font-weight: bold;
-  color: var(--elation-pink);
+  color: var(--red);
   margin-bottom: 4px;
 }
 
@@ -1221,13 +1493,13 @@ body.phase-gameover #main-content {
 /* 游戏结算 */
 .game-over {
   text-align: center;
-  padding: 20px;
+  padding: 12px;
 }
 
 .game-over strong {
-  font-size: 20px;
+  font-size: 16px;
   display: block;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .game-over .winner-wolf {
@@ -1239,35 +1511,17 @@ body.phase-gameover #main-content {
 }
 
 .game-over .winner-third {
-  color: var(--elation-purple);
+  color: var(--red);
 }
 
 .game-over .all-roles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
   text-align: left;
-  font-size: 13px;
-  line-height: 1.8;
+  font-size: 12px;
+  line-height: 1.7;
   color: var(--text-secondary);
-}
-
-/* 消息内头像 */
-.message-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid var(--elation-purple);
-  object-fit: cover;
-  vertical-align: middle;
-  margin-right: 6px;
-  flex-shrink: 0;
-}
-
-.message-with-avatar {
-  display: flex;
-  align-items: flex-start;
-}
-
-.message-with-avatar .message-content {
-  flex: 1;
 }
 
 /* 等待房间 */
@@ -1276,16 +1530,26 @@ body.phase-gameover #main-content {
   flex-direction: column;
   align-items: center;
   padding: 16px;
-  min-height: calc(100vh - 100px);
-  min-height: calc(100dvh - 100px);
 }
 
 body.phase-waiting #waiting-room {
   display: flex;
 }
 
-body.phase-waiting #messages-section {
-  display: none;
+body.phase-waiting #messages-section,
+body.phase-gameover #messages-section {
+  display: block;
+  flex: 1;
+  min-height: 200px;
+  overflow-y: auto;
+  background: rgba(10, 10, 12, 0.55);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  margin: 8px 0;
+}
+
+body.phase-waiting #waiting-room {
+  flex-shrink: 0;
 }
 
 #waiting-preset {
@@ -1300,18 +1564,29 @@ body.phase-waiting #messages-section {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 20px;
-  border: 1px solid rgba(199, 125, 255, 0.3);
-  border-radius: 12px;
-  background: rgba(199, 125, 255, 0.08);
+  padding: 6px 14px;
+  border: 1px solid rgba(230, 0, 18, 0.5);
+  border-radius: 10px;
+  background: rgba(13, 13, 13, 0.75);
+  color: #fff;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
   user-select: none;
 }
 
+#waiting-preset-current .preset-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#waiting-preset-current .preset-roles {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 #waiting-preset-current:hover {
-  border-color: var(--elation-purple);
-  background: rgba(199, 125, 255, 0.12);
+  border-color: var(--red);
+  background: rgba(13, 13, 13, 0.85);
 }
 
 #waiting-preset-current .preset-arrow {
@@ -1331,8 +1606,8 @@ body.phase-waiting #messages-section {
   left: 0;
   right: 0;
   margin-top: 4px;
-  background: rgba(26, 16, 53, 0.98);
-  border: 1px solid rgba(199, 125, 255, 0.25);
+  background: rgba(26, 26, 26, 0.98);
+  border: 1px solid rgba(230, 0, 18, 0.25);
   border-radius: 12px;
   padding: 6px 0;
   z-index: 60;
@@ -1361,13 +1636,13 @@ body.phase-waiting #messages-section {
 }
 
 #waiting-preset-dropdown .preset-option:hover {
-  background: rgba(199, 125, 255, 0.1);
-  border-left-color: var(--elation-purple);
+  background: rgba(230, 0, 18, 0.1);
+  border-left-color: var(--red);
 }
 
 #waiting-preset-dropdown .preset-option.selected {
-  background: rgba(199, 125, 255, 0.12);
-  border-left-color: var(--elation-purple);
+  background: rgba(230, 0, 18, 0.12);
+  border-left-color: var(--red);
 }
 
 .preset-option .preset-name {
@@ -1384,14 +1659,14 @@ body.phase-waiting #messages-section {
 
 .preset-option .preset-roles {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.8);
   margin-top: 2px;
 }
 
 #waiting-players {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
   max-width: 640px;
   width: 100%;
 }
@@ -1399,11 +1674,11 @@ body.phase-waiting #messages-section {
 .waiting-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(26, 16, 53, 0.85);
-  border: 1px solid rgba(199, 125, 255, 0.2);
-  border-radius: 12px;
-  padding: 10px 14px;
+  gap: 6px;
+  background: rgba(26, 26, 26, 0.85);
+  border: 1px solid rgba(230, 0, 18, 0.2);
+  border-radius: 8px;
+  padding: 6px 8px;
   transition: border-color 0.2s, background 0.2s;
 }
 
@@ -1424,8 +1699,8 @@ body.phase-waiting #messages-section {
 }
 
 .waiting-card.self {
-  border-color: var(--elation-pink);
-  background: rgba(26, 16, 53, 0.85);
+  border-color: var(--red);
+  background: rgba(26, 26, 26, 0.85);
 }
 
 .waiting-card.ai {
@@ -1433,20 +1708,20 @@ body.phase-waiting #messages-section {
 }
 
 .waiting-card.empty-slot {
-  border: 2px dashed rgba(199, 125, 255, 0.2);
-  background: rgba(26, 16, 53, 0.85);
+  border: 2px dashed rgba(230, 0, 18, 0.2);
+  background: rgba(26, 26, 26, 0.85);
   cursor: pointer;
   justify-content: center;
 }
 
 .waiting-card.empty-slot:hover {
-  border-color: var(--elation-purple);
-  background: rgba(199, 125, 255, 0.05);
+  border-color: var(--red);
+  background: rgba(230, 0, 18, 0.05);
 }
 
 .waiting-card .player-avatar {
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
 }
 
@@ -1457,7 +1732,7 @@ body.phase-waiting #messages-section {
 }
 
 .waiting-card-name {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -1467,13 +1742,13 @@ body.phase-waiting #messages-section {
 
 .waiting-card-name.editable {
   cursor: text;
-  border-bottom: 1px dashed rgba(199, 125, 255, 0.4);
+  border-bottom: 1px dashed rgba(230, 0, 18, 0.4);
   outline: none;
   min-width: 30px;
 }
 
 .waiting-card-name.editable:focus {
-  border-bottom-color: var(--elation-purple);
+  border-bottom-color: var(--red);
   text-overflow: unset;
 }
 
@@ -1485,35 +1760,41 @@ body.phase-waiting #messages-section {
 }
 
 .waiting-card-status {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .waiting-card.ready .waiting-card-status {
   color: var(--good-cyan);
 }
 
+.waiting-card-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .waiting-btn {
-  padding: 4px 10px;
-  border-radius: 14px;
-  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
   cursor: pointer;
-  border: 1px solid rgba(199, 125, 255, 0.3);
-  background: rgba(199, 125, 255, 0.08);
+  border: 1px solid rgba(230, 0, 18, 0.3);
+  background: rgba(230, 0, 18, 0.08);
   color: var(--text-primary);
   transition: all 0.2s;
   white-space: nowrap;
 }
 
 .waiting-btn:hover {
-  background: var(--elation-purple);
-  border-color: var(--elation-purple);
+  background: var(--red);
+  border-color: var(--red);
 }
 
 .waiting-btn.ready-btn {
-  background: linear-gradient(135deg, var(--elation-pink), var(--elation-purple));
-  border-color: var(--elation-pink);
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
+  border-color: var(--red);
   color: #fff;
   font-weight: 600;
 }
@@ -1523,52 +1804,52 @@ body.phase-waiting #messages-section {
 }
 
 .waiting-btn.unready-btn {
-  background: rgba(107, 95, 138, 0.2);
+  background: rgba(102, 102, 102, 0.2);
   border-color: var(--text-muted);
   color: var(--text-secondary);
 }
 
 .waiting-btn.spectate-btn {
   background: transparent;
-  border-color: rgba(125, 249, 255, 0.3);
-  color: var(--elation-cyan);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--white);
   font-size: 10px;
 }
 
 .waiting-btn.spectate-btn:hover {
-  background: rgba(125, 249, 255, 0.15);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .waiting-btn.kick-btn {
   background: transparent;
-  border-color: rgba(255, 77, 106, 0.3);
+  border-color: rgba(230, 0, 18, 0.3);
   color: var(--wolf-crimson);
   font-size: 10px;
 }
 
 .waiting-btn.kick-btn:hover {
-  background: rgba(255, 77, 106, 0.15);
+  background: rgba(230, 0, 18, 0.15);
   border-color: var(--wolf-crimson);
 }
 
 .debug-role-select {
-  padding: 3px 6px;
-  border: 1px solid rgba(199, 125, 255, 0.3);
-  border-radius: 10px;
-  background: rgba(26, 16, 53, 0.9);
+  padding: 2px 4px;
+  border: 1px solid rgba(230, 0, 18, 0.3);
+  border-radius: 8px;
+  background: rgba(26, 26, 26, 0.9);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 10px;
   outline: none;
   cursor: pointer;
 }
 
 .debug-role-select:focus {
-  border-color: var(--elation-purple);
+  border-color: var(--red);
 }
 
 .waiting-btn.join-btn {
-  background: linear-gradient(135deg, var(--elation-pink), var(--elation-purple));
-  border-color: var(--elation-pink);
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
+  border-color: var(--red);
   color: #fff;
 }
 
@@ -1576,8 +1857,8 @@ body.phase-waiting #messages-section {
 #waiting-spectators {
   margin-top: 16px;
   padding: 12px 16px;
-  border-top: 1px solid rgba(199, 125, 255, 0.1);
-  background: rgba(26, 16, 53, 0.85);
+  border-top: 1px solid rgba(230, 0, 18, 0.1);
+  background: rgba(26, 26, 26, 0.85);
   border-radius: 12px;
   max-width: 640px;
   width: 100%;
@@ -1588,11 +1869,6 @@ body.phase-waiting #messages-section {
   display: block;
 }
 
-.spectator-title {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
 
 .spectator-list {
   display: flex;
@@ -1606,9 +1882,45 @@ body.phase-waiting #messages-section {
   font-size: 12px;
   color: var(--text-secondary);
   padding: 4px 10px;
-  background: rgba(26, 16, 53, 0.85);
-  border: 1px solid rgba(199, 125, 255, 0.15);
+  background: rgba(26, 26, 26, 0.85);
+  border: 1px solid rgba(230, 0, 18, 0.15);
   border-radius: 10px;
+}
+
+.spectator-badge {
+  float: right;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  background: rgba(26, 26, 26, 0.9);
+  border: 1px solid rgba(230, 0, 18, 0.25);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.spectator-badge:hover {
+  color: var(--text-secondary);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.spectator-popup {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 12px;
+  padding: 8px 12px;
+  background: rgba(26, 26, 26, 0.95);
+  border: 1px solid rgba(230, 0, 18, 0.25);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  z-index: 100;
+  min-width: 100px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
 }
 
 .spectator-view-btns {
@@ -1623,39 +1935,47 @@ body.phase-waiting #messages-section {
   border-radius: 10px;
   font-size: 10px;
   cursor: pointer;
-  border: 1px solid rgba(199, 125, 255, 0.2);
+  border: 1px solid rgba(230, 0, 18, 0.2);
   background: transparent;
   color: var(--text-muted);
   transition: all 0.2s;
 }
 
 .view-btn.active {
-  background: var(--elation-purple);
-  border-color: var(--elation-purple);
+  background: var(--red);
+  border-color: var(--red);
   color: #fff;
 }
 
 .view-btn:hover:not(.active) {
-  border-color: var(--elation-purple);
+  border-color: var(--red);
   color: var(--text-primary);
 }
 
-/* 游戏中观战者视角切换 */
+/* 观战者视角切换 */
 #spectator-view-bar {
   display: none;
-  position: fixed;
-  top: 48px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 90;
-  background: rgba(13, 10, 26, 0.9);
-  padding: 4px 8px;
-  border-radius: 0 0 12px 12px;
-  border: 1px solid rgba(199, 125, 255, 0.2);
-  border-top: none;
+  justify-content: center;
   gap: 4px;
+  margin-top: 2px;
 }
 
-body.is-spectator:not(.phase-waiting):not(.phase-gameover) #spectator-view-bar {
+#spectator-view-bar:not(.hidden) {
   display: flex;
+}
+
+/* 聊天室消息 */
+.chat-message.chat-room .chat-bubble {
+  border-left: 3px solid var(--accent, #6c5ce7);
+}
+
+.chat-mention {
+  color: var(--accent, #6c5ce7);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* 全AI就绪弹窗 */
+.game-ready-dialog {
+  display: none;
 }

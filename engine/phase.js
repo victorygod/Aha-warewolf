@@ -9,6 +9,10 @@ const { createLogger } = require('../utils/logger');
 const { PHASE, ACTION, MSG, VISIBILITY, CAMP, DEATH_REASON } = require('./constants');
 const { buildMessage, formatVoteDetails } = require('./message_template');
 
+function fakeDelay() {
+  return new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
+}
+
 // 创建日志实例（延迟初始化，避免循环依赖）
 let backendLogger = null;
 function getLogger() {
@@ -46,7 +50,7 @@ const PHASE_FLOW = [
     condition: (game) => game.round === 1 && game.players.some(p => p.role.id === 'cupid'),
     execute: async (game) => {
       const cupid = game.players.find(p => p.role.id === 'cupid' && p.alive);
-      if (!cupid) return;
+      if (!cupid) return fakeDelay();
 
       await game.callSkill(cupid.id, ACTION.CUPID);
     }
@@ -56,12 +60,11 @@ const PHASE_FLOW = [
   {
     id: PHASE.GUARD,
     name: '守卫守护',
-    condition: (game) => game.players.some(p => p.role.id === 'guard' && p.alive),
+    condition: (game) => game.players.some(p => p.role.id === 'guard'),
     execute: async (game) => {
       const guard = game.players.find(p => p.role.id === 'guard' && p.alive);
-      if (!guard) return;
+      if (!guard) return fakeDelay();
 
-      // 传递给前端上一晚守护的目标，用于禁用
       const lastGuardTarget = guard.state.lastGuardTarget;
       await game.callSkill(guard.id, ACTION.GUARD, { lastGuardTarget });
     }
@@ -111,7 +114,7 @@ const PHASE_FLOW = [
           game.werewolfTarget = null;
           game.message.add({
             type: MSG.WOLF_VOTE_RESULT,
-            content: buildMessage('WOLF_VOTE_EMPTY', {}),
+            content: buildMessage('WOLF_VOTE_EMPTY', { 票型: formatVoteDetails(voteDetails, voteCounts) }),
             visibility: VISIBILITY.CAMP,
             playerId: wolves[0]?.id,
             voteDetails,
@@ -136,7 +139,7 @@ const PHASE_FLOW = [
       game.message.add({
         type: MSG.WOLF_VOTE_RESULT,
         content: buildMessage('WOLF_VOTE_RESULT', {
-          票型: formatVoteDetails(voteDetails),
+          票型: formatVoteDetails(voteDetails, voteCounts),
           最终击杀: targetPlayer ? `${targetPlayer.id}号${targetPlayer.name}` : '无'
         }),
         visibility: VISIBILITY.CAMP,
@@ -156,7 +159,7 @@ const PHASE_FLOW = [
     condition: (game) => game.players.some(p => p.role.id === 'witch'),
     execute: async (game) => {
       const witch = game.players.find(p => p.role.id === 'witch' && p.alive);
-      if (!witch) return;
+      if (!witch) return fakeDelay();
 
       // 使用统一的 callSkill（通过 useSkill 调用）
       const extraData = {
@@ -176,7 +179,7 @@ const PHASE_FLOW = [
     condition: (game) => game.players.some(p => p.role.id === 'seer'),
     execute: async (game) => {
       const seer = game.players.find(p => p.role.id === 'seer' && p.alive);
-      if (!seer) return;
+      if (!seer) return fakeDelay();
 
       await game.callSkill(seer.id, ACTION.SEER);
     }
@@ -354,6 +357,7 @@ const PHASE_FLOW = [
 
       // 清空上一天的遗言玩家
       game.lastWordsPlayer = null;
+      game.banishedPlayer = null;
 
       game.recordLastDeath();
     }
@@ -408,8 +412,9 @@ const PHASE_FLOW = [
       game.votes = {};
 
       // 死亡管道：遗言 → 技能+警徽移交
-      if (game.lastWordsPlayer) {
-        await game.processDeathChain([game.lastWordsPlayer], PHASE.POST_VOTE);
+      const deadPlayer = game.banishedPlayer || game.lastWordsPlayer;
+      if (deadPlayer) {
+        await game.processDeathChain([deadPlayer], PHASE.POST_VOTE);
       }
     }
   }

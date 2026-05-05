@@ -21,7 +21,8 @@ const ACTION = {
   SHERIFF_VOTE: 'action_sheriff_vote',
   DAY_VOTE: 'action_day_vote',
   POST_VOTE: 'action_post_vote',
-  NIGHT_WEREWOLF_VOTE: 'action_night_werewolf_vote'
+  NIGHT_WEREWOLF_VOTE: 'action_night_werewolf_vote',
+  CHAT: 'action_chat'
 };
 
 const CAMP = {
@@ -83,7 +84,6 @@ const elements = {
   playerNameInput: document.getElementById('player-name'),
   presetList: document.getElementById('preset-list'),
   presetLocked: document.getElementById('preset-locked'),
-  presetLockedName: document.getElementById('preset-locked-name'),
   readyBtn: document.getElementById('ready-btn'),
   presetPanel: document.getElementById('preset-panel'),
   presetPanelName: document.getElementById('preset-panel-name'),
@@ -91,8 +91,7 @@ const elements = {
   presetPanelRules: document.getElementById('preset-panel-rules'),
   waitingRoom: document.getElementById('waiting-room'),
   waitingPreset: document.getElementById('waiting-preset'),
-  waitingPlayers: document.getElementById('waiting-players'),
-  waitingSpectators: document.getElementById('waiting-spectators')
+  waitingPlayers: document.getElementById('waiting-players')
 };
 
 // 当前行动请求
@@ -209,6 +208,25 @@ async function init() {
     if (e.key === 'Enter') sendSpeech();
   });
 
+  // 加入游戏按钮
+  document.getElementById('join-game-btn').addEventListener('click', () => {
+    controller.sendSwitchRole('player');
+  });
+
+  // 开始游戏按钮（全 AI）
+  document.getElementById('start-game-btn').addEventListener('click', () => {
+    const btn = document.getElementById('start-game-btn');
+    btn.disabled = true;
+    btn.textContent = '开始中...';
+    controller.sendStartGame();
+  });
+
+  document.getElementById('restart-btn').addEventListener('click', async () => {
+    nightTransitionShown = false;
+    messagesInitialized = false;
+    await controller.reset();
+  });
+
   // 头部点击展开板子信息
   document.getElementById('header').addEventListener('click', togglePresetPanel);
 
@@ -228,6 +246,7 @@ async function init() {
   // 设置状态变更回调
   controller.onStateChange = updateUI;
   controller.onActionRequired = handleActionRequired;
+  controller.onGameReady = handleGameReady;
 
   // 设置面板：输入名字后加入
   elements.readyBtn.addEventListener('click', ready);
@@ -354,18 +373,20 @@ function renderPresetList(lockedPresetId = null) {
   }
 }
 
-// 更新 Debug 角色选择下拉框
+function buildDebugRoleOptionValues(roles, selectedRole) {
+  const uniqueRoles = [...new Set(roles)];
+  let html = '<option value="">随机</option>';
+  for (const role of uniqueRoles) {
+    const roleName = ROLE_NAMES[role] || role;
+    html += `<option value="${role}"${role === selectedRole ? ' selected' : ''}>${roleName}</option>`;
+  }
+  return html;
+}
+
 function updateDebugRoleSelect(roles) {
   const debugRoleSelect = document.getElementById('debug-role-select');
   if (!debugRoleSelect || !roles) return;
-
-  const uniqueRoles = [...new Set(roles)];
-  let optionsHtml = '<option value="">随机</option>';
-  for (const role of uniqueRoles) {
-    const roleName = ROLE_NAMES[role] || role;
-    optionsHtml += `<option value="${role}">${roleName}</option>`;
-  }
-  debugRoleSelect.innerHTML = optionsHtml;
+  debugRoleSelect.innerHTML = buildDebugRoleOptionValues(roles);
 }
 
 // 角色概览文本
@@ -376,22 +397,6 @@ function summarizeRoles(roles) {
     counts[r] = (counts[r] || 0) + 1;
   }
   return Object.entries(counts).map(([id, n]) => `${ROLE_NAMES[id] || id}${n > 1 ? n : ''}`).join(' / ');
-}
-
-// Debug 选角下拉框
-function buildDebugRoleOptionValues(roles, currentRole) {
-  const ROLE_NAMES = { werewolf: '狼人', seer: '预言家', witch: '女巫', hunter: '猎人', guard: '守卫', villager: '村民', idiot: '白痴', cupid: '丘比特' };
-  const uniqueRoles = [...new Set(roles)];
-  let html = '<option value="">随机</option>';
-  for (const r of uniqueRoles) {
-    const selected = r === currentRole ? ' selected' : '';
-    html += `<option value="${r}"${selected}>${ROLE_NAMES[r] || r}</option>`;
-  }
-  return html;
-}
-
-function buildDebugRoleOptions(roles, currentRole) {
-  return `<select class="debug-role-select" data-action="debug-role">${buildDebugRoleOptionValues(roles, currentRole)}</select>`;
 }
 
 // 锁定板子显示
@@ -511,6 +516,9 @@ function handleActionRequired(msg) {
     case ACTION.SHERIFF_SPEECH:
       elements.actionInput.classList.add('active');
       elements.actionPrompt.textContent = '轮到你发言了';
+      elements.speechInput.placeholder = '输入发言内容...';
+      elements.speechInput.disabled = false;
+      elements.sendBtn.disabled = false;
       break;
 
     case ACTION.DAY_VOTE:
@@ -948,6 +956,15 @@ async function sendSpeech() {
   const content = elements.speechInput.value.trim();
   if (!content) return;
 
+  const state = controller.getState();
+
+  // waiting / game_over 阶段走 chat 通道
+  if (state && (state.phase === 'waiting' || state.phase === 'game_over')) {
+    controller.sendChat(content);
+    elements.speechInput.value = '';
+    return;
+  }
+
   const myPlayer = controller.getMyPlayer();
   if (!myPlayer) {
     showError('请先加入游戏');
@@ -964,6 +981,57 @@ async function sendSpeech() {
   }
 
   elements.speechInput.value = '';
+}
+
+// 渲染聊天消息
+function renderChatMessage(msg, state) {
+  const msgId = msg.displayId || msg.id;
+  if (document.querySelector(`[data-msg-id="${msgId}"]`)) return;
+
+  // 游戏简讯分割线
+  if (msg.type === 'game_brief') {
+    const tpl = document.getElementById('tpl-game-brief');
+    const el = tpl.content.cloneNode(true).querySelector('.game-brief-divider');
+    el.dataset.msgId = msgId;
+    el.querySelector('.game-brief-content').textContent = msg.content;
+    elements.messages.appendChild(el);
+    return;
+  }
+
+  const myPlayer = controller.getMyPlayer();
+  const isSelf = (myPlayer && msg.playerId == myPlayer.id) || (msg.playerName && msg.playerName === controller.playerName);
+  const player = state?.players?.find(p => p.id == msg.playerId);
+  const isAI = msg.isAI || (player && player.isAI);
+
+  const avatarSrc = isAI && player && player.profileName
+    ? `/profiles/${player.profileName}/${player.profile?.icon || 'icon.webp'}`
+    : '/assets/masks/fools_mask.webp';
+
+  const parsedContent = window.MessageParser
+    ? window.MessageParser.parseMessageContent(msg.content)
+    : msg.content;
+
+  // @提及高亮
+  const highlightedContent = parsedContent.replace(/@(\S+)/g, '<span class="chat-mention">@$1</span>');
+
+  const tpl = document.getElementById('tpl-chat-message');
+  const el = tpl.content.cloneNode(true).querySelector('.chat-message');
+  el.className = `chat-message chat-room${isSelf ? ' self' : ''}`;
+  el.dataset.msgId = msgId;
+
+  el.querySelector('.chat-avatar').src = avatarSrc;
+  el.querySelector('.chat-avatar').alt = msg.playerName;
+  el.querySelector('.chat-name').textContent = `${msg.playerName}`;
+  el.querySelector('.chat-bubble').innerHTML = highlightedContent.replace(/\n/g, '<br>');
+
+  elements.messages.appendChild(el);
+}
+
+function handleGameReady() {
+  // 开始游戏按钮已在 updateDefaultAction 的 waiting 分支中渲染
+  // game_ready 事件触发时确保 UI 刷新
+  const state = controller.getState();
+  if (state) updateDefaultAction(state);
 }
 
 // 显示错误
@@ -983,7 +1051,13 @@ function rerenderMessages() {
   elements.messages.innerHTML = '';
   const messages = controller.isSpectator ? controller.getFilteredMessages() : controller.getMessageHistory();
   const state = controller.getState();
-  messages.forEach(msg => displayMessage(msg, state));
+  messages.forEach(msg => {
+    if (msg.source === 'chat') {
+      renderChatMessage(msg, state);
+    } else {
+      displayMessage(msg, state);
+    }
+  });
 }
 
 // 渲染等待房间
@@ -1017,7 +1091,7 @@ function renderWaitingRoom(state) {
     elements.waitingPreset.innerHTML = `
       <div id="waiting-preset-current">
         <span class="preset-name">${currentName}</span>
-        <span class="preset-roles" style="font-size:12px;color:var(--text-muted);margin-left:8px;">${currentRoles}</span>
+        <span class="preset-roles">${currentRoles}</span>
         <span class="preset-arrow">▼</span>
       </div>
       <div id="waiting-preset-dropdown">${dropdownHtml}</div>
@@ -1058,8 +1132,7 @@ function renderWaitingRoom(state) {
       ? `/profiles/${player.profileName}/${player.profile?.icon || 'icon.webp'}`
       : '/assets/masks/fools_mask.webp';
 
-    let statusText = player.ready ? '✓ 已准备' : '';
-    if (player.isAI) statusText = player.ready ? '✓ AI已准备' : 'AI';
+    const statusText = player.ready ? '✓ 已准备' : '';
 
     const debugRoleSelect = SERVER_DEBUG_MODE && state.preset?.roles && isSelf && !player.ready
       ? buildDebugRoleOptionValues(state.preset.roles, player.debugRole)
@@ -1191,38 +1264,6 @@ function renderWaitingRoom(state) {
     }
   }
 
-  // 观战者区域
-  const spectators = state.spectators || [];
-  if (spectators.length > 0) {
-    elements.waitingSpectators.classList.remove('hidden');
-    let spectatorHtml = '<div class="spectator-title">👁 观战者</div><div class="spectator-list">';
-    spectators.forEach(s => {
-      const isMe = s.name === controller.playerName;
-      spectatorHtml += `<span class="spectator-item">${s.name}${isMe ? ' (你)' : ''}</span>`;
-    });
-    spectatorHtml += '</div>';
-
-    // 如果自己是观战者，显示加入游戏按钮
-    if (isSpectator) {
-      const currentCount = state.players?.length || 0;
-      if (currentCount < total) {
-        spectatorHtml += '<div style="margin-top:10px;"><button class="waiting-btn join-btn" data-action="join-game">加入游戏</button></div>';
-      }
-    }
-
-    elements.waitingSpectators.innerHTML = spectatorHtml;
-
-    const joinBtn = elements.waitingSpectators.querySelector('[data-action="join-game"]');
-    if (joinBtn) {
-      joinBtn.addEventListener('click', () => {
-        controller.sendSwitchRole('player');
-      });
-    }
-  } else {
-    elements.waitingSpectators.classList.add('hidden');
-  }
-
-  // 更新观战者视角栏
   updateSpectatorViewBar(state);
 }
 
@@ -1231,13 +1272,16 @@ function updateSpectatorViewBar(state) {
   const bar = document.getElementById('spectator-view-bar');
   if (!bar) return;
 
-  if (controller.isSpectator) {
-    document.body.classList.add('is-spectator');
+  const isWaiting = document.body.classList.contains('phase-waiting');
+  const isGameover = document.body.classList.contains('phase-gameover');
+
+  if (controller.isSpectator && !isWaiting && !isGameover) {
+    bar.classList.remove('hidden');
     bar.querySelectorAll('.view-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === controller.spectatorView);
     });
   } else {
-    document.body.classList.remove('is-spectator');
+    bar.classList.add('hidden');
   }
 }
 
@@ -1251,11 +1295,18 @@ function updateUI(state) {
     return;
   }
 
+  // 阶段切换时清空 DOM，让 updateMessages 从 messageHistory（= state.messages）重新渲染
+  if (lastPhase && lastPhase !== state.phase) {
+    elements.messages.innerHTML = '';
+    messagesInitialized = false;
+  }
+
   // 从等待进入游戏：播放天黑请闭眼转场
   if (lastPhase === 'waiting' && state.phase !== 'waiting' && !nightTransitionShown) {
     nightTransitionShown = true;
     showNightTransition();
   }
+
   lastPhase = state.phase;
 
   // 游戏结束时清除当前行动，确保能显示结算页面
@@ -1281,22 +1332,6 @@ function updateUI(state) {
 
   // 观战者视角栏
   updateSpectatorViewBar(state);
-
-  // 观战者数量提示
-  const spectatorCount = state.spectators?.length || 0;
-  let spectatorInfo = document.getElementById('spectator-info');
-  if (spectatorCount > 0 && state.phase !== 'waiting') {
-    if (!spectatorInfo) {
-      spectatorInfo = document.createElement('div');
-      spectatorInfo.id = 'spectator-info';
-      spectatorInfo.style.cssText = 'text-align:center;font-size:11px;color:var(--text-muted);padding:2px 0;';
-      const messagesEl = document.getElementById('messages');
-      messagesEl.insertBefore(spectatorInfo, messagesEl.firstChild);
-    }
-    spectatorInfo.textContent = `👁 ${spectatorCount}人观战`;
-  } else if (spectatorInfo) {
-    spectatorInfo.remove();
-  }
 
   // 如果没有行动请求，且 state 中也没有待处理的行动请求，才更新默认操作区
   // 注意：state.pendingAction 可能在 updateUI 之后才被处理（通过 onActionRequired）
@@ -1328,14 +1363,7 @@ function updateHeader(state) {
 
   let phaseText = phaseNames[state.phase] || state.phase;
   if (state.phase === 'waiting') {
-    const current = state.players?.length || 0;
-    const total = state.playerCount || state.preset?.playerCount || 9;
-    const readyCount = state.players?.filter(p => p.ready).length || 0;
-    const spectatorCount = state.spectators?.length || 0;
-    phaseText = `${state.preset?.name || '9人标准局'} | ${readyCount}/${total} 已准备`;
-    if (spectatorCount > 0) {
-      phaseText += ` | 👁 ${spectatorCount}人观战`;
-    }
+    phaseText = '欢愉杀';
     if (state.presetLocked && state.presetId) {
       showPresetLocked(state.presetId);
     }
@@ -1367,13 +1395,7 @@ function updateHeader(state) {
     document.body.classList.add('phase-day');
   }
 
-  // 观战者 body class
-  if (controller.isSpectator) {
-    document.body.classList.add('is-spectator');
-  } else {
-    document.body.classList.remove('is-spectator');
-  }
-
+  
   const myPlayer = controller.getMyPlayer();
   if (myPlayer?.role) {
     const roleId = myPlayer.role.id || myPlayer.role;
@@ -1424,6 +1446,7 @@ function updatePlayers(state) {
     if (myPlayer && player.id === myPlayer.id) card.classList.add('self');
 
     const isSheriff = player.isSheriff || state.sheriff === player.id;
+    if (isSheriff) card.classList.add('sheriff');
     const isCouple = player.isCouple;
     const revealed = player.revealed;
 
@@ -1449,25 +1472,25 @@ function updatePlayers(state) {
     }
 
     let statusText = player.alive ? (player.isAI ? 'AI' : '玩家') : '已死亡';
-    if (isSheriff) statusText += ' 🏅';
+    if (isSheriff) statusText += ' 👑';
     if (isCouple) statusText += ' 💕';
     if (revealed) statusText += ' 📢';
     if (state.phase === 'waiting' && player.ready) statusText += ' ✓';
-
-    const sheriffBadge = isSheriff ? '<div class="sheriff-badge">🔱</div>' : '';
 
     // 头像：AI 玩家使用 profile 头像，人类玩家使用默认面具
     const avatarSrc = player.isAI && player.profileName
       ? `/profiles/${player.profileName}/${player.profile?.icon || 'icon.webp'}`
       : '/assets/masks/fools_mask.webp';
+    const sheriffBadge = isSheriff ? '<div class="sheriff-badge">👑</div>' : '';
 
     card.innerHTML = `
-      ${sheriffBadge}
-      <img class="player-avatar" src="${avatarSrc}" alt="${player.name}" onerror="this.src='/assets/masks/fools_mask.webp'">
+      <div class="player-avatar-wrapper">
+        <img class="player-avatar" src="${avatarSrc}" alt="${player.name}" onerror="this.src='/assets/masks/fools_mask.webp'">
+        ${sheriffBadge}
+      </div>
       <div class="player-position">${position}号</div>
       <div class="player-name">${player.name}</div>
-      <div class="player-status">${statusText}</div>
-      ${roleText ? `<div class="player-role">${roleText}</div>` : ''}
+            ${roleText ? `<div class="player-role">${roleText}${isCouple ? ' 💕' : ''}</div>` : ''}
     `;
 
     // AI 玩家点击头像弹出详情
@@ -1513,27 +1536,33 @@ function updatePlayers(state) {
 function updateMessages() {
   const messages = controller.isSpectator ? controller.getFilteredMessages() : controller.getMessageHistory();
   const state = controller.getState();
-  let added = false;
+  let addedGame = false;
+  let addedChat = false;
 
   messages.forEach(msg => {
-    if (!document.querySelector(`[data-msg-id="${msg.id}"]`)) {
-      displayMessage(msg, state);
-      added = true;
+    const msgId = msg.displayId || msg.id;
+    if (!document.querySelector(`[data-msg-id="${msgId}"]`)) {
+      if (msg.source === 'chat') {
+        renderChatMessage(msg, state);
+        addedChat = true;
+      } else {
+        displayMessage(msg, state);
+        addedGame = true;
+      }
     }
   });
 
-  if (added) {
+  if (addedGame || addedChat) {
     const el = elements.messagesSection;
-    const nearBottom = isNearBottom(el, 120);
     if (window.frontendLogger) {
-      window.frontendLogger.info(`[scroll] added=true, initialized=${messagesInitialized}, nearBottom=${nearBottom}, scrollTop=${el.scrollTop}, scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}`);
+      window.frontendLogger.info(`[scroll] addedGame=${addedGame}, addedChat=${addedChat}, initialized=${messagesInitialized}, scrollTop=${el.scrollTop}, scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}`);
     }
-    if (!messagesInitialized) {
+    if (addedGame) {
       scrollToBottom(el);
-      messagesInitialized = true;
-    } else if (nearBottom) {
-      scrollToBottom(el);
+    } else {
+      scrollToBottomIfNear(el);
     }
+    messagesInitialized = true;
   }
 }
 
@@ -1553,13 +1582,12 @@ function scrollToBottom(el) {
 
 // 显示消息
 function displayMessage(msg, state) {
+  const msgId = msg.displayId || msg.id;
   if (msg.type === 'phase_start') {
-    addPhaseDivider(msg.phaseName || msg.content || msg.phase, msg.id, msg.phase, msg.round);
-  } else if (msg.type === 'speech' || msg.type === 'wolf_speech' || msg.type === 'last_words') {
-    const pos = msg.playerId;
-    const prefix = msg.type === 'last_words' ? '【遗言】' : '';
-    const className = msg.type === 'wolf_speech' ? 'wolf-channel' : (msg.type === 'last_words' ? 'last-words' : '');
-    addMessage(`${prefix}${pos}号${msg.playerName}：${msg.content}`, className, msg.id);
+    addPhaseDivider(msg.phaseName || msg.content || msg.phase, msgId, msg.phase, msg.round);
+  } else if (msg.type === 'speech' || msg.type === 'wolf_speech' || msg.type === 'last_words' || msg.type === 'sheriff_speech') {
+    const typeClass = msg.type === 'wolf_speech' ? 'wolf-channel' : (msg.type === 'last_words' ? 'last-words' : '');
+    addChatMessage(msg, state, typeClass);
 
     // 发言立绘：白天发言阶段、AI 玩家、非夜晚
     if (msg.type === 'speech' && state) {
@@ -1570,36 +1598,36 @@ function displayMessage(msg, state) {
       }
     }
   } else if ((msg.type === 'vote_result' || msg.type === 'wolf_vote_result') && msg.voteDetails) {
-    // 显示投票结果详情（公开投票或狼人内部投票）
     const isWolfVote = msg.type === 'wolf_vote_result';
+    // 按目标分组
+    const byTarget = {};
+    for (const v of msg.voteDetails) {
+      if (!byTarget[v.target]) byTarget[v.target] = [];
+      byTarget[v.target].push(v.voter);
+    }
     let content = '<div class="vote-result">';
     content += `<div class="vote-title">${isWolfVote ? '🔪 狼人刀人投票' : '投票结果'}</div>`;
-    // 显示最终结果（狼人刀谁）
-    if (isWolfVote && msg.content) {
-      content += `<div class="vote-final">${msg.content}</div>`;
-    }
     content += '<div class="vote-details">';
-    msg.voteDetails.forEach(v => {
-      content += `<div>${v.voter} → ${v.target}</div>`;
-    });
-    content += '</div>';
-    if (msg.voteCounts) {
-      content += '<div class="vote-counts">';
-      for (const [playerId, count] of Object.entries(msg.voteCounts)) {
-        const pos = Number(playerId);
-        const player = state?.players?.find(p => p.id === Number(playerId));
-        content += `<div>${pos}号${player?.name || ''}: ${count}票</div>`;
-      }
-      content += '</div>';
+    for (const [target, voters] of Object.entries(byTarget)) {
+      // target 格式为 "3号玩家3"，提取前面的数字
+      const numTarget = Number(target.match(/^(\d+)/)?.[1]);
+      const count = msg.voteCounts?.[numTarget] || voters.length;
+      const countStr = Number.isInteger(count) ? count : count.toFixed(1);
+      content += `<div>${target} ${countStr}票（${voters.join('，')}）</div>`;
     }
     content += '</div>';
-    addMessage(content, isWolfVote ? 'wolf-vote-result' : 'vote-result', msg.id);
+    if (isWolfVote && msg.content) {
+      const match = msg.content.match(/最终击杀：(.+)/);
+      if (match) content += `<div class="vote-final">最终击杀：${match[1]}</div>`;
+    }
+    content += '</div>';
+    addMessage(content, isWolfVote ? 'wolf-vote-result' : 'vote-result', msgId);
   } else if (msg.type === 'vote_tie') {
-    addMessage(msg.content, 'vote-tie', msg.id);
+    addMessage(msg.content, 'vote-tie', msgId);
   } else if (msg.type === 'sheriff_candidates') {
-    addMessage(msg.content, 'sheriff-candidates', msg.id);
+    addMessage(msg.content, 'sheriff-candidates', msgId);
   } else if (msg.type === 'sheriff_elected') {
-    addMessage(msg.content, 'sheriff-elected', msg.id);
+    addMessage(msg.content, 'sheriff-elected', msgId);
   } else if (msg.type === 'death_announce' && msg.deaths) {
     if (window.frontendLogger) {
       window.frontendLogger.info(`[Death] msg: ${JSON.stringify(msg)}`);
@@ -1611,16 +1639,19 @@ function displayMessage(msg, state) {
       content += `<div>${pos}号${d.name} 死亡</div>`;
     });
     content += '</div>';
-    addMessage(content, 'system death', msg.id);
+    addMessage(content, 'system death', msgId);
+  } else if (/^\[系统\]第\d+[夜天]$/.test(msg.content)) {
+    return;
   } else if (msg.type === MSG.ACTION || msg.type === MSG.SYSTEM) {
-    // 私有消息（visibility: 'self'）显示给玩家自己
     if (msg.visibility === VISIBILITY.SELF) {
-      addMessage(`[私密] ${msg.content}`, 'private', msg.id);
+      addMessage(`[私密] ${msg.content}`, 'private', msgId);
+    } else if (msg.content.includes('平安夜')) {
+      addMessage(msg.content, 'system peaceful', msgId);
     } else {
-      addMessage(msg.content, msg.className || msg.type, msg.id);
+      addMessage(msg.content, msg.className || msg.type, msgId);
     }
   } else {
-    addMessage(msg.content, msg.className || msg.type, msg.id);
+    addMessage(msg.content, msg.className || msg.type, msgId);
   }
 }
 
@@ -1634,11 +1665,46 @@ function addMessage(content, className = '', id = null) {
   const parsedContent = window.MessageParser
     ? window.MessageParser.parseMessageContent(content)
     : content;
-  const msg = document.createElement('div');
+  // 使用模板
+  const tpl = document.getElementById('tpl-message');
+  const msg = tpl.content.cloneNode(true).querySelector('.message');
   msg.className = `message ${className}`;
   if (id) msg.dataset.msgId = id;
-  msg.innerHTML = `<div class="message-content">${parsedContent.replace(/\n/g, '<br>')}</div>`;
+  msg.querySelector('.message-content').innerHTML = parsedContent.replace(/\n/g, '<br>');
   elements.messages.appendChild(msg);
+}
+
+// 添加聊天气泡消息（微信风格）
+function addChatMessage(msg, state, typeClass = '') {
+  const msgId = msg.displayId || msg.id;
+  if (msgId && document.querySelector(`[data-msg-id="${msgId}"]`)) return;
+
+  const myPlayer = controller.getMyPlayer();
+  const isSelf = myPlayer && msg.playerId === myPlayer.id;
+  const player = state?.players?.find(p => p.id === msg.playerId);
+  const isSheriff = player && (player.isSheriff || state.sheriff === player.id);
+
+  const avatarSrc = player && player.isAI && player.profileName
+    ? `/profiles/${player.profileName}/${player.profile?.icon || 'icon.webp'}`
+    : '/assets/masks/fools_mask.webp';
+
+  const parsedContent = window.MessageParser
+    ? window.MessageParser.parseMessageContent(msg.content)
+    : msg.content;
+
+  // 使用模板
+  const tpl = document.getElementById('tpl-chat-message');
+  const el = tpl.content.cloneNode(true).querySelector('.chat-message');
+  el.className = `chat-message ${typeClass}${isSelf ? ' self' : ''}`;
+  if (msgId) el.dataset.msgId = msgId;
+
+  el.querySelector('.chat-avatar').src = avatarSrc;
+  el.querySelector('.chat-avatar').alt = msg.playerName;
+  const sheriffMark = isSheriff ? '<span class="chat-sheriff-mark">👑</span> ' : '';
+  el.querySelector('.chat-name').innerHTML = `${sheriffMark}${msg.playerId}号 ${msg.playerName}`;
+  el.querySelector('.chat-bubble').innerHTML = parsedContent.replace(/\n/g, '<br>');
+
+  elements.messages.appendChild(el);
 }
 
 // 添加阶段分割线
@@ -1646,11 +1712,16 @@ function addPhaseDivider(phaseText, msgId = null, msgPhase = null, msgRound = nu
   if (msgId && document.querySelector(`[data-msg-id="${msgId}"]`)) {
     return;
   }
-  const divider = document.createElement('div');
-  divider.className = 'phase-divider';
+  // 放逐后处理阶段不显示分割线
+  if (msgPhase === 'post_vote') {
+    return;
+  }
+  // 使用模板
+  const tpl = document.getElementById('tpl-phase-divider');
+  const divider = tpl.content.cloneNode(true).querySelector('.phase-divider');
 
   const nightPhases = ['cupid', 'guard', 'night_werewolf_discuss', 'night_werewolf_vote', 'witch', 'seer'];
-  const dayPhases = ['sheriff_campaign', 'sheriff_speech', 'sheriff_vote', 'day_announce', 'day_discuss', 'day_vote', 'post_vote', 'last_words'];
+  const dayPhases = ['sheriff_campaign', 'sheriff_speech', 'sheriff_vote', 'day_announce', 'day_discuss', 'day_vote', 'last_words'];
 
   let displayText = phaseText;
   if (msgPhase) {
@@ -1674,11 +1745,45 @@ function addPhaseDivider(phaseText, msgId = null, msgPhase = null, msgRound = nu
   }
 
   if (msgId) divider.dataset.msgId = msgId;
-  divider.innerHTML = `<span>${displayText}</span>`;
+  divider.querySelector('span').textContent = displayText;
   elements.messages.appendChild(divider);
 }
 
-// 更新默认操作区（没有行动请求时）
+function _renderSpectatorBadge(spectators, spectatorCount) {
+  const actionSection = document.getElementById('action-section');
+  const existing = actionSection.querySelector('.spectator-badge');
+  if (existing) existing.remove();
+  const existingPopup = actionSection.querySelector('.spectator-popup');
+  if (existingPopup) existingPopup.remove();
+
+  if (spectatorCount <= 0) return;
+
+  const badge = document.createElement('span');
+  badge.className = 'spectator-badge';
+  badge.textContent = `👁 ${spectatorCount}`;
+  elements.actionPrompt.appendChild(badge);
+  badge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const popup = actionSection.querySelector('.spectator-popup');
+    if (popup) { popup.remove(); return; }
+    const newPopup = document.createElement('div');
+    newPopup.className = 'spectator-popup';
+    newPopup.innerHTML = spectators.map(s =>
+      `<span class="spectator-item">${s.name}${s.name === controller.playerName ? ' (你)' : ''}</span>`
+    ).join('');
+    actionSection.appendChild(newPopup);
+    setTimeout(() => {
+      const close = (ev) => {
+        if (!newPopup.contains(ev.target) && ev.target !== badge) {
+          newPopup.remove();
+          document.removeEventListener('click', close);
+        }
+      };
+      document.addEventListener('click', close);
+    }, 0);
+  });
+}
+
 function updateDefaultAction(state) {
   elements.actionInput.classList.remove('active');
   elements.voteButtons.classList.remove('active');
@@ -1687,21 +1792,35 @@ function updateDefaultAction(state) {
   elements.voteButtons.innerHTML = '';
   elements.skillButtons.innerHTML = '';
 
-  const myPlayer = controller.getMyPlayer();
+  // 隐藏内联按钮
+  document.getElementById('join-game-btn').classList.add('hidden');
+  document.getElementById('start-game-btn').classList.add('hidden');
+  document.getElementById('restart-btn').classList.add('hidden');
 
-  if (controller.isSpectator) {
-    if (state.phase !== 'waiting' && state.phase !== 'game_over') {
-      const viewLabels = { villager: '村民', werewolf: '狼人', god: '上帝' };
-      elements.actionPrompt.textContent = `👁 观战中 | ${viewLabels[controller.spectatorView] || '村民'}视角`;
-      return;
-    }
-  } else if (!myPlayer) {
+  const myPlayer = controller.getMyPlayer();
+  const spectators = state.spectators || [];
+  const spectatorCount = spectators.length;
+
+  // 游戏中观战者：显示视角切换栏
+  if (controller.isSpectator && state.phase !== 'waiting' && state.phase !== 'game_over') {
+    elements.actionPrompt.innerHTML = `<span style="font-size:12px;">👁 观战中${spectatorCount > 1 ? ` (${spectatorCount}人)` : ''}</span>`;
+    const bar = document.getElementById('spectator-view-bar');
+    bar.classList.remove('hidden');
+    bar.querySelectorAll('.view-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === controller.spectatorView);
+    });
+    return;
+  }
+
+  document.getElementById('spectator-view-bar').classList.add('hidden');
+
+  if (!myPlayer && !controller.isSpectator) {
     elements.actionPrompt.textContent = '请先加入游戏';
     return;
   }
 
   if (myPlayer && !myPlayer.alive && state.phase !== 'last_words' && state.phase !== 'game_over' && state.phase !== 'post_vote') {
-    elements.actionPrompt.textContent = '你已死亡，观战中...';
+    elements.actionPrompt.innerHTML = '<span style="font-size:12px;">你已死亡，观战中...</span>';
     return;
   }
 
@@ -1709,16 +1828,46 @@ function updateDefaultAction(state) {
     const current = state.players?.length || 0;
     const total = state.playerCount || state.preset?.playerCount || 9;
     const readyCount = state.players?.filter(p => p.ready).length || 0;
+    const allAI = state.players?.length > 0 && state.players.every(p => p.isAI);
+    const allReady = current === total && readyCount === total;
 
-    if (controller.isSpectator) {
-      elements.actionPrompt.textContent = `观战中 | ${current}/${total} 已准备${readyCount}`;
-    } else if (myPlayer && myPlayer.ready) {
-      elements.actionPrompt.textContent = `已准备 (${readyCount}/${total})，等待其他人...`;
-    } else if (myPlayer && !myPlayer.ready) {
-      elements.actionPrompt.textContent = `等待准备... (${readyCount}/${total})`;
-    } else {
-      elements.actionPrompt.textContent = current < total ? `等待玩家加入... (${current}/${total})` : '人已齐，即将开始...';
+    // 聊天输入框
+    elements.actionInput.classList.add('active');
+    elements.speechInput.placeholder = '输入消息...';
+    elements.speechInput.disabled = false;
+    elements.sendBtn.disabled = false;
+
+    // 加入游戏按钮：仅观战者 + 有空位
+    const joinBtn = document.getElementById('join-game-btn');
+    if (joinBtn) {
+      joinBtn.classList.toggle('hidden', !controller.isSpectator || current >= total);
     }
+
+    // 开始游戏按钮：仅全 AI 就绪
+    const startBtn = document.getElementById('start-game-btn');
+    if (startBtn) {
+      const shouldShow = allAI && allReady;
+      startBtn.classList.toggle('hidden', !shouldShow);
+      if (shouldShow) {
+        startBtn.disabled = false;
+        startBtn.textContent = '开始游戏';
+      }
+    }
+
+    // 状态文字
+    if (controller.isSpectator) {
+      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">👁 观战中 | ${current}/${total}</span>`;
+    } else if (myPlayer && myPlayer.ready) {
+      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">已准备 (${readyCount}/${total})</span>`;
+    } else if (myPlayer && !myPlayer.ready) {
+      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">等待准备... (${readyCount}/${total})</span>`;
+    } else {
+      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">${current < total ? `等待玩家加入... (${current}/${total})` : '人已齐...'}</span>`;
+    }
+
+    // 观战者计数徽章（绝对定位，不影响布局）
+    _renderSpectatorBadge(spectators, spectatorCount);
+
     return;
   }
 
@@ -1759,7 +1908,7 @@ function updateDefaultAction(state) {
         const display = p.display || `${idx + 1}号${p.name}`;
         const roleName = p.role ? ROLE_NAMES[p.role.id] || p.role.id : '未知';
         const deathInfo = p.alive ? '存活' : (p.deathReason ? `死亡(${DEATH_REASONS[p.deathReason] || p.deathReason})` : '死亡');
-        const sheriffMark = p.isSheriff ? ' 🏅警长' : '';
+        const sheriffMark = p.isSheriff ? ' 👑警长' : '';
         const coupleMark = p.isCouple ? ' 💕情侣' : '';
         gameOverHtml += `<div>${display}: ${roleName} - ${deathInfo}${sheriffMark}${coupleMark}</div>`;
       });
@@ -1767,17 +1916,18 @@ function updateDefaultAction(state) {
     gameOverHtml += '</div></div>';
 
     elements.actionPrompt.innerHTML = gameOverHtml;
-    elements.skillButtons.classList.add('active');
-    const restartBtn = document.createElement('button');
-    restartBtn.className = 'skill-btn';
-    restartBtn.textContent = '返回房间';
-    restartBtn.addEventListener('click', async () => {
-      nightTransitionShown = false;
-      lastPhase = null;
-      messagesInitialized = false;
-      await controller.reset();
-    });
-    elements.skillButtons.appendChild(restartBtn);
+
+    // 返回房间按钮（行内）
+    document.getElementById('restart-btn').classList.remove('hidden');
+
+    // 聊天输入框
+    elements.actionInput.classList.add('active');
+    elements.speechInput.placeholder = '输入消息...';
+    elements.speechInput.disabled = false;
+    elements.sendBtn.disabled = false;
+
+    _renderSpectatorBadge(spectators, spectatorCount);
+
     return;
   }
 
@@ -1804,6 +1954,10 @@ function updateDefaultAction(state) {
   } else {
     elements.actionPrompt.textContent = '等待中...';
   }
+  // playing 阶段无行动时禁用输入框
+  elements.speechInput.disabled = true;
+  elements.speechInput.placeholder = '';
+  elements.sendBtn.disabled = true;
 }
 
 // 启动

@@ -61,6 +61,7 @@ class GameEngine extends EventEmitter {
     this.sheriffAssignOrder = null;  // 警长指定的发言顺序
     this.deathQueue = [];
     this.lastWordsPlayer = null;
+    this.banishedPlayer = null;
     this.lastDeathPlayer = null;  // 上一轮死亡的第一位玩家
     this._lastNightDeaths = [];  // 上一晚的死亡信息（用于公布死讯）
 
@@ -680,7 +681,7 @@ class GameEngine extends EventEmitter {
         canVote: p.state?.canVote !== false,
         canSpeak: this.canSpeak(p),
         isSheriff: this.sheriff === p.id,
-        isCouple: this.couples?.includes(p.id) && this.couples?.includes(playerId),
+        isCouple: this.couples?.includes(p.id) && (this.couples?.includes(playerId) || !this.players.find(pl => pl.id === playerId)),
         couplePartner: this.couples?.includes(p.id) && this.couples?.includes(playerId)
           ? this.couples.find(id => id !== p.id)
           : null

@@ -17,8 +17,7 @@ const ROLE_NAMES = {
 };
 
 class MessageManager {
-  constructor(playerId, options = {}) {
-    this.playerId = playerId;
+  constructor(options = {}) {
     this.messages = [];
     this.lastProcessedId = 0;
     this.compressionEnabled = options.compressionEnabled !== false;
@@ -28,7 +27,7 @@ class MessageManager {
   formatIncomingMessages(context) {
     const newMessages = context.messages.filter(m => m.id > this.lastProcessedId);
     const players = context.players || [];
-    const currentPlayer = players.find(p => p.id === this.playerId);
+    const currentPlayer = players.find(p => p.id === context.self?.id);
     const newContent = formatMessageHistory(newMessages, players, currentPlayer);
     return { newContent, newMessages };
   }
@@ -49,9 +48,10 @@ class MessageManager {
     this.lastProcessedId = latestId;
   }
 
-  updateSystem(player, game) {
-    if (!player || !player.role) return;
-    const systemPrompt = buildSystemPrompt(player, game, player.background);
+  updateSystem(player, game, mode = 'game') {
+    if (!player) return;
+    if (mode === 'game' && !player.role) return;
+    const systemPrompt = buildSystemPrompt(player, { game, mode });
     if (this.messages.length > 0 && this.messages[0].role === 'system') {
       this.messages[0] = { role: 'system', content: systemPrompt };
     } else {
@@ -59,7 +59,7 @@ class MessageManager {
     }
   }
 
-  async compress(llmModel) {
+  async compress(llmModel, mode = 'game') {
     if (!this.compressionEnabled) return;
     try {
       const newContent = this._compactHistoryAfterSummary();
@@ -69,7 +69,9 @@ class MessageManager {
       if (!player) return;
 
       const prevSummary = this._findPrevSummary();
-      const prompt = this._buildCompressPrompt(newContent, player, prevSummary);
+      const prompt = mode === 'chat'
+        ? this._buildChatCompressPrompt(newContent, player, prevSummary)
+        : this._buildCompressPrompt(newContent, player, prevSummary);
 
       let text;
       if (llmModel && llmModel.isAvailable()) {
@@ -84,11 +86,47 @@ class MessageManager {
           this.messages[0],
           { role: 'user', content: `【之前压缩摘要】\n${text}` }
         ];
-        getLogger().info(`[MessageManager] 压缩完成，playerId=${this.playerId}, 摘要长度=${text.length}`);
+        getLogger().info(`[MessageManager] 压缩完成，摘要长度=${text.length}`);
       }
     } catch (err) {
       getLogger().error(`[MessageManager] 压缩历史失败：${err.message}`);
     }
+  }
+
+  appendChatSummary(summary) {
+    if (!summary) return;
+    const content = `【之前压缩摘要】\n${summary}`;
+    if (this.messages.length > 1 && this.messages[1].role === 'user' && this.messages[1].content?.startsWith('【之前压缩摘要】')) {
+      this.messages[1] = { role: 'user', content };
+    } else {
+      this.messages.push({ role: 'user', content });
+    }
+  }
+
+  replaceWithSummary(summary) {
+    if (!summary) return;
+    const systemMsg = this.messages[0]?.role === 'system' ? this.messages[0] : null;
+    this.messages = systemMsg
+      ? [systemMsg, { role: 'user', content: `【之前压缩摘要】\n${summary}` }]
+      : [{ role: 'user', content: `【之前压缩摘要】\n${summary}` }];
+  }
+
+  loadChatHistory(chatContent) {
+    if (!chatContent) return;
+    const systemMsg = this.messages[0]?.role === 'system' ? this.messages[0] : null;
+    this.messages = systemMsg
+      ? [systemMsg, { role: 'user', content: `【聊天室历史】\n${chatContent}` }]
+      : [{ role: 'user', content: `【聊天室历史】\n${chatContent}` }];
+    getLogger().info(`[MessageManager] 加载聊天室历史，内容长度=${chatContent.length}`);
+  }
+
+  resetWatermark() {
+    this.lastProcessedId = 0;
+    this._lastContext = null;
+  }
+
+  appendGameInfo(gameInfo) {
+    this.messages.push({ role: 'user', content: gameInfo });
   }
 
   setCompressContext(context) {
@@ -158,6 +196,23 @@ ${newContent}
 3. 可能的局势走向
 
 直接输出摘要，不要有其他内容，非确定性信息需要保留概率分析。`;
+  }
+
+  _buildChatCompressPrompt(newContent, player, prevSummary) {
+    const identityInfo = `名字:${player.name || '未知'}`;
+
+    return `请将以下聊天历史压缩为300字以内的摘要。
+
+## 你的身份
+${identityInfo}
+
+## 上次压缩摘要
+${prevSummary || '（无）'}
+
+## 新增消息（从上次压缩点到当前）
+${newContent}
+
+直接输出摘要，不要有其他内容。`;
   }
 }
 

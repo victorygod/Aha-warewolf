@@ -93,6 +93,9 @@ function buildToolResultMessage(toolName, action, context) {
     case ACTION.LAST_WORDS:
       return `你说：${action.content || ''}`;
 
+    case ACTION.CHAT:
+      return `你说：${action.content || ''}`;
+
     default:
       return '操作成功';
   }

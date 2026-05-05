@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>狼人杀</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
   <div id="app">
@@ -37,7 +37,6 @@
       <div id="waiting-room">
         <div id="waiting-preset"></div>
         <div id="waiting-players"></div>
-        <div id="waiting-spectators" class="hidden"></div>
       </div>
 
       <!-- 消息区域 -->
@@ -48,9 +47,17 @@
       <!-- 操作区域 -->
       <section id="action-section">
         <div id="action-prompt"></div>
+        <div id="spectator-view-bar" class="hidden">
+          <button class="view-btn active" data-view="villager">村民</button>
+          <button class="view-btn" data-view="werewolf">狼人</button>
+          <button class="view-btn" data-view="god">上帝</button>
+        </div>
         <div id="action-input">
           <input type="text" id="speech-input" placeholder="输入发言内容...">
           <button id="send-btn">发送</button>
+          <button class="inline-btn join-game-btn hidden" id="join-game-btn">加入</button>
+          <button class="inline-btn start-game-btn hidden" id="start-game-btn">开始游戏</button>
+          <button class="inline-btn restart-btn hidden" id="restart-btn">返回房间</button>
         </div>
         <div id="vote-buttons"></div>
         <div id="skill-buttons"></div>
@@ -88,13 +95,6 @@
       </div>
     </div>
 
-    <!-- 观战者视角切换栏 -->
-    <div id="spectator-view-bar">
-      <button class="view-btn active" data-view="villager">村民</button>
-      <button class="view-btn" data-view="werewolf">狼人</button>
-      <button class="view-btn" data-view="god">上帝</button>
-    </div>
-
     <!-- AI 角色详情弹窗 -->
     <div id="profile-popup" class="hidden">
       <div id="profile-popup-overlay"></div>
@@ -107,11 +107,45 @@
         <button id="profile-popup-close">✕</button>
       </div>
     </div>
+
+    <!-- 消息模板 -->
+    <template id="tpl-message">
+      <div class="message">
+        <div class="message-content"></div>
+      </div>
+    </template>
+
+    <!-- 聊天消息模板 -->
+    <template id="tpl-chat-message">
+      <div class="chat-message">
+        <img class="chat-avatar" src="/assets/masks/fools_mask.webp" alt="">
+        <div class="chat-body">
+          <div class="chat-name"></div>
+          <div class="chat-bubble"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- 阶段分割线模板 -->
+    <template id="tpl-phase-divider">
+      <div class="phase-divider">
+        <span></span>
+      </div>
+    </template>
+
+    <!-- 游戏简讯分割线模板 -->
+    <template id="tpl-game-brief">
+      <div class="game-brief-divider">
+        <div class="game-brief-line"></div>
+        <div class="game-brief-content"></div>
+        <div class="game-brief-line"></div>
+      </div>
+    </template>
   </div>
 
   <script src="logger.js?v=3"></script>
   <script src="message_parser.js?v=3"></script>
   <script src="controller.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

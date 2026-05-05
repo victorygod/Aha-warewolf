@@ -37,15 +37,21 @@ function formatPlayerList(players) {
   return players.map(p => `${p.position}号${p.name}`).join('，');
 }
 
-function formatVoteDetails(voteDetails) {
+function formatVoteDetails(voteDetails, voteCounts) {
   const byTarget = {};
   for (const v of voteDetails) {
     if (!byTarget[v.target]) byTarget[v.target] = [];
     byTarget[v.target].push(v.voter);
   }
   return Object.entries(byTarget)
-    .map(([target, voters]) => `${target}(${voters.join(',')})`)
-    .join('，');
+    .map(([target, voters]) => {
+      // target 格式为 "3号玩家3"，提取前面的数字
+      const numTarget = Number(target.match(/^(\d+)/)?.[1]);
+      const count = voteCounts?.[numTarget] || voters.length;
+      const countStr = Number.isInteger(count) ? count : count.toFixed(1);
+      return `${target} ${countStr}票(${voters.join('，')})`;
+    })
+    .join('\n');
 }
 
 module.exports = {

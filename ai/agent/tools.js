@@ -120,7 +120,7 @@ function createDiscussTool(name, description) {
     execute(input, context) {
       // 参数名错误检查
       if (typeof input === 'object' && input !== null) {
-        const keyError = validateAllowedKeys(input, ['content'], this.name);
+        const keyError = validateAllowedKeys(input, ['content', 'skip'], this.name);
         if (keyError) return keyError;
       }
 
@@ -157,6 +157,7 @@ registerTool(createDiscussTool(ACTION.DAY_DISCUSS, '白天发表言论'));
 registerTool(createDiscussTool(ACTION.SHERIFF_SPEECH, '警长竞选发言'));
 registerTool(createDiscussTool(ACTION.LAST_WORDS, '发表遗言'));
 registerTool(createDiscussTool(ACTION.NIGHT_WEREWOLF_DISCUSS, '狼人夜间讨论'));
+registerTool(createDiscussTool(ACTION.CHAT, '聊天室发言'));
 
 registerTool({
   name: ACTION.WITCH,

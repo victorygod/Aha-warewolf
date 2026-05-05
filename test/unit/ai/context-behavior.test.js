@@ -90,7 +90,7 @@ describe('System Prompt 上下文', () => {
     initSystemMessages(game, aiControllers);
     const sysMsg = aiControllers.get(1).agent.mm.messages[0];
     if (sysMsg.role !== 'system') throw new Error('第一条应为system');
-    includes(sysMsg.content, '名字:P1');
+    includes(sysMsg.content, '你是P1');
     includes(sysMsg.content, '位置:1号位');
     includes(sysMsg.content, '角色:狼人');
     includes(sysMsg.content, '队友:2号P2,3号P3');
@@ -212,12 +212,16 @@ describe('buildSystemPrompt 精确匹配', () => {
   it('各角色格式正确', () => {
     const { game } = createTestGame();
     const wolf1 = game.players[0];
-    includes(buildSystemPrompt(wolf1, game), '名字:P1 位置:1号位 角色:狼人 队友:2号P2,3号P3');
+    includes(buildSystemPrompt(wolf1, { game }), '你是P1');
+    includes(buildSystemPrompt(wolf1, { game }), '位置:1号位 角色:狼人');
+    includes(buildSystemPrompt(wolf1, { game }), '队友:2号P2,3号P3');
     const seer4 = game.players[3];
-    includes(buildSystemPrompt(seer4, game), '名字:P4 位置:4号位 角色:预言家');
-    notIncludes(buildSystemPrompt(seer4, game), '队友');
+    includes(buildSystemPrompt(seer4, { game }), '你是P4');
+    includes(buildSystemPrompt(seer4, { game }), '位置:4号位 角色:预言家');
+    notIncludes(buildSystemPrompt(seer4, { game }), '队友');
     const villager7 = game.players[6];
-    includes(buildSystemPrompt(villager7, game), '名字:P7 位置:7号位 角色:村民');
+    includes(buildSystemPrompt(villager7, { game }), '你是P7');
+    includes(buildSystemPrompt(villager7, { game }), '位置:7号位 角色:村民');
   });
 });
 

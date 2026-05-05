@@ -1,8 +1,3 @@
-/**
- * controller.js - AI 控制器
- * 对外接口与 ai/controller.js 对齐
- */
-
 const { PlayerController } = require('../engine/player');
 const { Agent } = require('./agent/agent');
 const { createLogger } = require('../utils/logger');
@@ -10,13 +5,12 @@ const { getPlayerDisplay } = require('../engine/utils');
 const { ACTION, VISIBILITY } = require('../engine/constants');
 
 let backendLogger = null;
-const getLogger = () => backendLogger || (backendLogger = global.backendLogger || createLogger('backend.log'));
+const getLogger = () => backendLogger || (global.backendLogger || createLogger('backend.log'));
 
 class AIController extends PlayerController {
   constructor(playerId, game, options = {}) {
     super(playerId, game);
 
-    // 保存玩家名称，用于 assignRoles 后重建映射
     const player = this.getPlayer();
     this.playerName = player?.name;
 
@@ -27,18 +21,19 @@ class AIController extends PlayerController {
     } else if (options.agentType === 'mock') {
       agentOptions.mockOptions = options.mockOptions;
     }
-    this.agent = new Agent(playerId, agentOptions);
+    this.agent = new Agent(agentOptions);
   }
 
   buildContext(extraData = {}) {
     const state = this.getState();
     const player = this.getPlayer();
+    const isChat = extraData.actionType === ACTION.CHAT;
 
     return {
       phase: state.phase,
       players: state.players,
       alivePlayers: this.game?.players?.filter(p => p.alive) || [],
-      messages: this.getVisibleMessages(),
+      messages: isChat ? [] : this.getVisibleMessages(),
       self: state.self,
       dayCount: this.game?.round || 0,
       werewolfTarget: this.game?.werewolfTarget,
@@ -59,7 +54,6 @@ class AIController extends PlayerController {
       this.agent.enqueue({ type: 'answer', context, callback: resolve });
     });
 
-    // action 格式：{ skip: true } 或 { content: "..." }
     const content = action?.skip ? '过。' : (action?.content || '过。');
     getLogger().info(`[AI] ${player?.name} 发言：${content}`);
     return { content, visibility };
@@ -73,7 +67,6 @@ class AIController extends PlayerController {
       this.agent.enqueue({ type: 'answer', context, callback: resolve });
     });
 
-    // action 格式：{ skip: true } 或 { target: N }
     const isSkipping = action?.skip === true;
     const targetId = action?.target != null ? parseInt(action.target) : (action?.targetId != null ? parseInt(action.targetId) : null);
 
@@ -119,11 +112,9 @@ class AIController extends PlayerController {
       this.agent.enqueue({ type: 'answer', context, callback: resolve });
     });
 
-    // action 格式：{ skip: true } 或 { target: N } 或 { targets: [N, N] } 或 { action: 'heal' } 等
     const targetsStr = this.formatAllowedTargets(actionType, extraData);
     getLogger().info(`[AI] ${player.name} 使用技能 ${actionType}, 可选：${targetsStr} → ${JSON.stringify(action)}`);
 
-    // 弃权时跳过技能执行
     if (action?.skip === true) {
       return { success: true, skipped: true };
     }
@@ -143,6 +134,48 @@ class AIController extends PlayerController {
     const context = this.buildContext({ actionType: 'analyze' });
     this.agent.enqueue({ type: 'answer', context, callback: null });
   }
+
+  async sendChatMessage(chatContext) {
+    const player = this.getPlayer();
+    this.agent.updateSystemMessage(player, null, 'chat');
+    const context = this.buildContext({ actionType: ACTION.CHAT, chatContext });
+
+    const action = await new Promise(resolve => {
+      this.agent.enqueue({ type: 'answer', context, callback: resolve });
+    });
+
+    if (action?.skip) {
+      getLogger().info(`[AI-Chat] ${player?.name} 跳过聊天`);
+      return null;
+    }
+
+    const content = action?.content?.trim();
+    if (!content) {
+      getLogger().info(`[AI-Chat] ${player?.name} 聊天内容为空，跳过`);
+      return null;
+    }
+
+    getLogger().info(`[AI-Chat] ${player?.name} 聊天：${content}`);
+
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      content,
+      isAI: true
+    };
+  }
+
+  async reassignToGame(newGame) {
+    this.game = newGame;
+    const player = this.getPlayer();
+    if (player) {
+      await this.agent.resetForNewGame(player, newGame);
+    }
+  }
+
+  destroy() {
+    this.agent.destroy();
+  }
 }
 
 class AIManager {
@@ -159,6 +192,13 @@ class AIManager {
 
   get(playerId) {
     return this.controllers.get(playerId);
+  }
+
+  async reassignToGame(newGame) {
+    this.game = newGame;
+    for (const controller of this.controllers.values()) {
+      await controller.reassignToGame(newGame);
+    }
   }
 
   onMessageAdded(msg) {

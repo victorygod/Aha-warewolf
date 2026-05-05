@@ -15,6 +15,14 @@ class EventEmitter {
     this.listeners.get(event).push(handler);
   }
 
+  // 取消订阅
+  off(event, handler) {
+    if (!this.listeners.has(event)) return;
+    const handlers = this.listeners.get(event);
+    const idx = handlers.indexOf(handler);
+    if (idx !== -1) handlers.splice(idx, 1);
+  }
+
   // 触发事件，返回是否被取消
   emit(event, data) {
     if (!this.listeners.has(event)) return false;

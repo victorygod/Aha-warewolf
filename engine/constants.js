@@ -71,7 +71,10 @@ const ACTION = {
 
   // 技能行动
   SHOOT: 'action_shoot',
-  EXPLODE: 'action_explode'
+  EXPLODE: 'action_explode',
+
+  // 聊天室
+  CHAT: 'action_chat'
 };
 
 // ==================== 消息类型 ====================
@@ -133,7 +136,7 @@ const MSG_TEMPLATE = {
 
   // 死亡与投票
   NIGHT_DEATH: '[系统]昨夜{玩家列表}死亡',
-  DAY_VOTE: '[系统]放逐投票：{票型}',
+  DAY_VOTE: '[投票结果]\n{票型}',
   VOTE_TIE: '[系统]平票PK：{平票玩家}',
   VOTE_ANNOUNCE: '[系统]{player}被放逐',
   HUNTER_SHOOT: '[系统]{player}开枪带走了{target}',
@@ -151,7 +154,7 @@ const MSG_TEMPLATE = {
   // 阶段与系统
   PHASE_DAY: '[系统]第{round}天',
   PHASE_NIGHT: '[系统]第{round}夜',
-  SHERIFF_CANDIDATES: '[系统|警长竞选发言]警上：{警上列表} 警下：{警下列表}',
+  SHERIFF_CANDIDATES: '[系统|警长竞选发言]警上：{警上列表}\n警下：{警下列表}',
   SHERIFF_ELECTED: '[系统]{player}当选警长',
   WITHDRAW: '[系统]{player}退水',
   PEACEFUL_NIGHT: '[系统]昨夜平安夜',
@@ -164,8 +167,8 @@ const MSG_TEMPLATE = {
   SHERIFF_BADGE_LOST: '[系统]警徽流失',
   SHERIFF_DEAD: '[系统]警长死亡，警徽流失',
   NO_SHERIFF_CANDIDATE: '[系统]无人竞选警长',
-  WOLF_VOTE_RESULT: '[系统|私密]狼刀票型：{票型}\n最终击杀：{最终击杀}',
-  WOLF_VOTE_EMPTY: '[系统|私密]狼人空刀'
+  WOLF_VOTE_RESULT: '[狼刀投票结果|私密]\n{票型}\n最终击杀：{最终击杀}',
+  WOLF_VOTE_EMPTY: '[狼刀投票结果|私密]\n{票型}\n狼人空刀'
 };
 
 // ==================== 导出所有常量 ====================

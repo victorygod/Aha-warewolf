@@ -263,7 +263,7 @@ describe('compress 整体流程', () => {
 
     await mm.compress(fakeLLM);
 
-    const newMsgSection = capturedPrompt.split('## 新增消息（从上次压缩点到当前）\n')[1]?.split('\n\n请生成')[0];
+    const newMsgSection = capturedPrompt.split(/## [^\n]+\n/).pop()?.split('\n\n请生成')[0];
     const lines = newMsgSection.split('\n');
 
     if (lines[0] !== '第1天白天发言') throw new Error(`lines[0] 期望 '第1天白天发言', 实际 '${lines[0]}'`);
@@ -358,6 +358,48 @@ describe('compress 整体流程', () => {
     if (!capturedPrompt.includes('队友')) {
       throw new Error('狼人身份的 prompt 应包含队友信息');
     }
+  });
+
+  it('appendChatSummary 添加压缩摘要到 messages', async () => {
+    const mm = new MessageManager(1, { compressionEnabled: true });
+    mm.messages = [
+      { role: 'system', content: '系统提示' }
+    ];
+    mm.appendChatSummary('赛前聊天摘要内容');
+
+    if (mm.messages.length !== 2) throw new Error(`messages.length 期望 2, 实际 ${mm.messages.length}`);
+    if (mm.messages[1].role !== 'user') throw new Error(`messages[1].role 期望 'user'`);
+    if (!mm.messages[1].content.startsWith('【之前压缩摘要】')) throw new Error('摘要消息应以【之前压缩摘要】开头');
+    if (!mm.messages[1].content.includes('赛前聊天摘要内容')) throw new Error('摘要应包含内容');
+  });
+
+  it('appendChatSummary 有已有摘要时替换', async () => {
+    const mm = new MessageManager(1, { compressionEnabled: true });
+    mm.messages = [
+      { role: 'system', content: '系统提示' },
+      { role: 'user', content: '【之前压缩摘要】\n旧摘要' }
+    ];
+    mm.appendChatSummary('新摘要');
+
+    if (mm.messages.length !== 2) throw new Error(`messages.length 期望 2, 实际 ${mm.messages.length}`);
+    if (!mm.messages[1].content.includes('新摘要')) throw new Error('已有摘要时应替换为新摘要');
+    if (mm.messages[1].content.includes('旧摘要')) throw new Error('旧摘要应被替换');
+  });
+
+  it('replaceWithSummary 清除所有赛前消息只保留 system+摘要', () => {
+    const mm = new MessageManager(1, { compressionEnabled: true });
+    mm.messages = [
+      { role: 'system', content: '系统提示' },
+      { role: 'user', content: '【有人@你】某某提到了你...最近聊天：\n张三: 你好' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'tc1', function: { name: 'action_chat', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'tc1', content: '操作成功' }
+    ];
+    mm.replaceWithSummary('赛前聊天摘要');
+
+    if (mm.messages.length !== 2) throw new Error(`messages.length 期望 2, 实际 ${mm.messages.length}`);
+    if (mm.messages[0].role !== 'system') throw new Error('messages[0] 应为 system');
+    if (!mm.messages[1].content.startsWith('【之前压缩摘要】')) throw new Error('messages[1] 应以【之前压缩摘要】开头');
+    if (!mm.messages[1].content.includes('赛前聊天摘要')) throw new Error('应包含摘要内容');
   });
 });
 

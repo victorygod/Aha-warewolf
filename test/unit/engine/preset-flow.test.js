@@ -177,7 +177,7 @@ describe('AI prompt 与 ruleDescriptions 同步', () => {
       role: createPlayerRole('werewolf'),
       state: { isWolf: true }
     }];
-    const prompt = buildSystemPrompt(game.players[0], game);
+    const prompt = buildSystemPrompt(game.players[0], { game });
     if (!prompt.includes('规则:')) throw new Error('有 preset 时 prompt 应包含 "规则:"');
     if (!prompt.includes('女巫仅首夜可自救')) throw new Error('9人局 prompt 应包含女巫自救规则');
     if (!prompt.includes('猎人被毒不能开枪')) throw new Error('9人局 prompt 应包含猎人开枪规则');
@@ -196,8 +196,8 @@ describe('AI prompt 与 ruleDescriptions 同步', () => {
       role: createPlayerRole('werewolf'), state: { isWolf: true }
     }];
 
-    const prompt9 = buildSystemPrompt(game9.players[0], game9);
-    const prompt12gc = buildSystemPrompt(game12gc.players[0], game12gc);
+    const prompt9 = buildSystemPrompt(game9.players[0], { game: game9 });
+    const prompt12gc = buildSystemPrompt(game12gc.players[0], { game: game12gc });
 
     if (prompt9.includes('守卫不可连守')) throw new Error('9人局 prompt 不应包含守卫连守规则');
     if (!prompt12gc.includes('守卫不可连守')) throw new Error('12人守丘局 prompt 应包含守卫连守规则');
@@ -212,7 +212,7 @@ describe('AI prompt 与 ruleDescriptions 同步', () => {
       id: 1, name: '测试', alive: true, isAI: true,
       role: createPlayerRole('werewolf'), state: { isWolf: true }
     }];
-    const prompt = buildSystemPrompt(game.players[0], game);
+    const prompt = buildSystemPrompt(game.players[0], { game });
     if (prompt.includes('规则:')) throw new Error('无 preset 时 prompt 不应包含 "规则:"');
   });
 });

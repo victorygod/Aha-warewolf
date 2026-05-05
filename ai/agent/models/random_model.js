@@ -25,16 +25,11 @@ const ANALYSIS_TEMPLATES = [
 ];
 
 class RandomModel {
-  constructor(playerId) {
-    this.playerId = playerId;
-  }
-
   isAvailable() {
     return true;
   }
 
   call(context) {
-    // 无 tool 时返回分析文本
     if (!context._tools || context._tools.length === 0) {
       return ANALYSIS_TEMPLATES[Math.floor(Math.random() * ANALYSIS_TEMPLATES.length)];
     }
@@ -42,14 +37,12 @@ class RandomModel {
     this.logContext(context);
     const decision = this._decideInternal(context);
 
-    // 对齐 LLMModel 输出格式
     return this._wrapResponse(decision, context);
   }
 
   _wrapResponse(decision, context) {
     const tool = context._tools?.[0];
 
-    // 弃权：通过 tool 传入 null
     if (!decision || decision.type === 'skip') {
       if (tool) {
         return {
@@ -88,9 +81,10 @@ class RandomModel {
 
   _decideInternal(context) {
     const { action, alivePlayers, extraData, self } = context;
+    const selfId = self?.id;
 
     if (!alivePlayers) {
-      getLogger().error(`[RandomModel] alivePlayers 不存在：playerId=${this.playerId}, action=${action}`);
+      getLogger().error(`[RandomModel] alivePlayers 不存在：action=${action}`);
       return { type: 'skip' };
     }
 
@@ -98,11 +92,12 @@ class RandomModel {
       case ACTION.DAY_DISCUSS:
       case ACTION.SHERIFF_SPEECH:
       case ACTION.LAST_WORDS:
+      case ACTION.CHAT:
         return this.speechAction();
 
       case ACTION.DAY_VOTE:
       case ACTION.SHERIFF_VOTE:
-        return this.voteAction(alivePlayers, extraData?.allowedTargets);
+        return this.voteAction(alivePlayers, extraData?.allowedTargets, selfId);
 
       case ACTION.NIGHT_WEREWOLF_DISCUSS:
         return this.wolfSpeechAction();
@@ -111,7 +106,7 @@ class RandomModel {
         return this.wolfVoteAction(alivePlayers, extraData?.allowedTargets);
 
       case ACTION.SEER:
-        return this.seerAction(alivePlayers, self?.seerChecks);
+        return this.seerAction(alivePlayers, self?.seerChecks, selfId);
 
       case ACTION.WITCH:
         return this.witchAction(context);
@@ -120,10 +115,10 @@ class RandomModel {
         return this.guardAction(alivePlayers, self?.lastGuardTarget);
 
       case ACTION.CUPID:
-        return this.cupidAction(alivePlayers);
+        return this.cupidAction(alivePlayers, selfId);
 
       case ACTION.SHOOT:
-        return this.hunterAction(alivePlayers);
+        return this.hunterAction(alivePlayers, selfId);
 
       case ACTION.SHERIFF_CAMPAIGN:
         return this.campaignAction();
@@ -132,10 +127,10 @@ class RandomModel {
         return this.withdrawAction();
 
       case ACTION.ASSIGN_ORDER:
-        return this.assignOrderAction(alivePlayers);
+        return this.assignOrderAction(alivePlayers, selfId);
 
       case ACTION.PASS_BADGE:
-        return this.passBadgeAction(alivePlayers);
+        return this.passBadgeAction(alivePlayers, selfId);
 
       default:
         return { skip: true };
@@ -160,10 +155,10 @@ class RandomModel {
     return { content: speeches[Math.floor(Math.random() * speeches.length)] };
   }
 
-  voteAction(alivePlayers, allowedTargets) {
+  voteAction(alivePlayers, allowedTargets, selfId) {
     if (Math.random() < 0.2) return { skip: true };
 
-    let candidates = alivePlayers.filter(p => p.id !== this.playerId);
+    let candidates = alivePlayers.filter(p => p.id !== selfId);
     if (allowedTargets && allowedTargets.length > 0) {
       candidates = candidates.filter(p => allowedTargets.includes(p.id));
     }
@@ -186,8 +181,8 @@ class RandomModel {
     return { target: String(target.id) };
   }
 
-  seerAction(alivePlayers, seerChecks) {
-    let candidates = alivePlayers.filter(p => p.id !== this.playerId);
+  seerAction(alivePlayers, seerChecks, selfId) {
+    let candidates = alivePlayers.filter(p => p.id !== selfId);
     if (seerChecks && seerChecks.length > 0) {
       const checkedIds = seerChecks.map(c => c.targetId);
       candidates = candidates.filter(p => !checkedIds.includes(p.id));
@@ -200,15 +195,16 @@ class RandomModel {
 
   witchAction(context) {
     const { werewolfTarget, self } = context;
+    const selfId = self?.id;
     const canHeal = self?.witchHeal > 0;
     const canPoison = self?.witchPoison > 0;
 
-    if (canHeal && werewolfTarget && werewolfTarget !== this.playerId) {
+    if (canHeal && werewolfTarget && werewolfTarget !== selfId) {
       if (Math.random() < 0.7) return { action: 'heal' };
     }
 
     if (canPoison && Math.random() < 0.3) {
-      const others = context.alivePlayers.filter(p => p.id !== this.playerId);
+      const others = context.alivePlayers.filter(p => p.id !== selfId);
       if (others.length > 0) {
         const target = others[Math.floor(Math.random() * others.length)];
         return { action: 'poison', target: String(target.id) };
@@ -226,16 +222,16 @@ class RandomModel {
     return { target: String(target.id) };
   }
 
-  cupidAction(alivePlayers) {
-    const others = alivePlayers.filter(p => p.id !== this.playerId);
+  cupidAction(alivePlayers, selfId) {
+    const others = alivePlayers.filter(p => p.id !== selfId);
     if (others.length < 2) return { skip: true };
 
     const shuffled = [...others].sort(() => Math.random() - 0.5);
     return { targets: [shuffled[0].id, shuffled[1].id] };
   }
 
-  hunterAction(alivePlayers) {
-    const others = alivePlayers.filter(p => p.id !== this.playerId);
+  hunterAction(alivePlayers, selfId) {
+    const others = alivePlayers.filter(p => p.id !== selfId);
     if (others.length === 0) return { skip: true };
 
     if (Math.random() < 0.7) {
@@ -253,16 +249,16 @@ class RandomModel {
     return { withdraw: Math.random() < 0.3 };
   }
 
-  passBadgeAction(alivePlayers) {
-    const others = alivePlayers.filter(p => p.id !== this.playerId);
+  passBadgeAction(alivePlayers, selfId) {
+    const others = alivePlayers.filter(p => p.id !== selfId);
     if (others.length === 0) return { skip: true };
 
     const target = others[Math.floor(Math.random() * others.length)];
     return { target: String(target.id) };
   }
 
-  assignOrderAction(alivePlayers) {
-    const others = alivePlayers.filter(p => p.id !== this.playerId);
+  assignOrderAction(alivePlayers, selfId) {
+    const others = alivePlayers.filter(p => p.id !== selfId);
     if (others.length === 0) return { skip: true };
 
     const target = others[Math.floor(Math.random() * others.length)];
@@ -270,11 +266,10 @@ class RandomModel {
   }
 
   logContext(context) {
-    getLogger().info(`[RandomModel] playerId=${this.playerId} 决策上下文 (${context.action})`);
+    getLogger().info(`[RandomModel] 决策上下文 (${context.action})`);
 
-    // DEBUG 模式下打印 LLM 消息
     if (global.DEBUG_MODE && context._messagesForLLM?.length > 0) {
-      getLogger().debug(`[RandomModel] playerId=${this.playerId} LLM消息: ${JSON.stringify(context._messagesForLLM, null, 2)}`);
+      getLogger().debug(`[RandomModel] LLM消息: ${JSON.stringify(context._messagesForLLM, null, 2)}`);
     }
   }
 }

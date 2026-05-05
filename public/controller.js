@@ -105,19 +105,9 @@ class Controller {
           }
         }
 
-        // 更新消息历史
+        // 同步消息：服务器 displayMessages 是唯一真相源，直接替换
         if (msg.data?.messages) {
-          const lastId = this.messageHistory.length > 0
-            ? this.messageHistory[this.messageHistory.length - 1].id
-            : 0;
-          msg.data.messages.forEach(m => {
-            if (m.id > lastId) {
-              // 检查是否已存在
-              if (!this.messageHistory.some(existing => existing.id === m.id)) {
-                this.messageHistory.push(m);
-              }
-            }
-          });
+          this.messageHistory = msg.data.messages;
         }
 
         // 触发回调
@@ -162,6 +152,12 @@ class Controller {
         }
         if (this.onStateChange) {
           this.onStateChange(this.cachedState);
+        }
+        break;
+
+      case 'game_ready':
+        if (this.onGameReady) {
+          this.onGameReady();
         }
         break;
 
@@ -320,6 +316,16 @@ class Controller {
     this.send('switch_role', { role });
   }
 
+  // 发送聊天消息
+  sendChat(content) {
+    this.send('chat', { content });
+  }
+
+  // 请求开始游戏（全AI就绪时）
+  sendStartGame() {
+    this.send('start_game');
+  }
+
   // 重置游戏（返回房间）
   async reset() {
     this.send('reset');
@@ -348,10 +354,9 @@ class Controller {
     if (view === 'god') return messages;
 
     return messages.filter(msg => {
+      if (!msg.visibility) return true;
       if (msg.visibility === 'public') return true;
       if (view === 'werewolf' && msg.visibility === 'camp') {
-        // 狼人视角：显示狼人阵营消息
-        // 需要判断发送者是否是狼人
         const state = this.cachedState;
         if (state?.players) {
           const sender = state.players.find(p => p.id === msg.playerId);

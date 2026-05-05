@@ -15,8 +15,8 @@ describe('buildMessage', () => {
   });
 
   it('使用{票型}占位符', () => {
-    const result = buildMessage('DAY_VOTE', { 票型: '5号(1,2,3)' });
-    if (!result.includes('5号(1,2,3)')) throw new Error(`格式错误: ${result}`);
+    const result = buildMessage('DAY_VOTE', { 票型: '5号aa 3票(1号bb，2号cc，3号dd)' });
+    if (!result.includes('5号aa 3票(1号bb，2号cc，3号dd)')) throw new Error(`格式错误: ${result}`);
   });
 
   it('空参数返回模板原样', () => {
@@ -82,8 +82,8 @@ describe('formatVoteDetails', () => {
       { voter: '3号李四', target: '弃权' }
     ];
     const result = formatVoteDetails(voteDetails);
-    if (!result.includes('3号李四(1号张三,2号王五)')) throw new Error(`格式错误: ${result}`);
-    if (!result.includes('弃权(3号李四)')) throw new Error(`格式错误: ${result}`);
+    if (!result.includes('3号李四 2票(1号张三，2号王五)')) throw new Error(`格式错误: ${result}`);
+    if (!result.includes('弃权 1票(3号李四)')) throw new Error(`格式错误: ${result}`);
   });
 
   it('空数组返回空字符串', () => {
