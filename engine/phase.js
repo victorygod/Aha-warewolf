@@ -317,6 +317,11 @@ const PHASE_FLOW = [
       game.healTarget = null;
       game.poisonTarget = null;
 
+      // 记录本轮第一个死亡的玩家（用于下一轮发言顺序），在清空 deathQueue 之前
+      if (game.deathQueue.length > 0) {
+        game.lastDeathPlayer = game.deathQueue[0].id;
+      }
+
       // 夜晚死亡标记（原 nightManager.process 内联）
       const allDeaths = [];
       while (game.deathQueue.length > 0) {
@@ -358,8 +363,6 @@ const PHASE_FLOW = [
       // 清空上一天的遗言玩家
       game.lastWordsPlayer = null;
       game.banishedPlayer = null;
-
-      game.recordLastDeath();
     }
   },
 

@@ -911,13 +911,6 @@ class GameEngine extends EventEmitter {
     return playerId;
   }
 
-  // 记录本轮死亡的第一位玩家（用于下一轮发言顺序）
-  recordLastDeath() {
-    if (this.deathQueue.length > 0) {
-      this.lastDeathPlayer = this.deathQueue[0].id;
-    }
-  }
-
   // 警长指定发言起始位置
   setSheriffOrder(startPlayerId) {
     this.sheriffAssignOrder = startPlayerId;

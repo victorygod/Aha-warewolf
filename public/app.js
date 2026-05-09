@@ -106,7 +106,7 @@ function isNearBottom(el, threshold = 80) {
 
 function scrollToBottomIfNear(el) {
   if (isNearBottom(el)) {
-    el.scrollTop = el.scrollHeight;
+    scrollToBottom(el);
   }
 }
 
@@ -1581,11 +1581,7 @@ function updateMessages() {
     if (window.frontendLogger) {
       window.frontendLogger.info(`[scroll] addedGame=${addedGame}, addedChat=${addedChat}, initialized=${messagesInitialized}, scrollTop=${el.scrollTop}, scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}`);
     }
-    if (addedGame) {
-      scrollToBottom(el);
-    } else {
-      scrollToBottomIfNear(el);
-    }
+    scrollToBottom(el);
     messagesInitialized = true;
   }
 }
