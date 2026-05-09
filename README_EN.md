@@ -93,17 +93,6 @@ npm start
 
 Open http://localhost:3000, join a room, and start playing.
 
-### CLI Client
-
-Besides the browser, you can also use the command-line client — handy for debugging and quick simulations:
-
-```bash
-node cli_client.js --start --name MyName --preset 9-standard
-node cli_client.js --status          # Check current state
-node cli_client.js --action <number> # Perform an action
-node cli_client.js --speak "message" # Speak
-```
-
 ## Debug Mode
 
 ```bash
@@ -115,28 +104,15 @@ Debug mode enables two features:
 - **Choose your role** — Assign roles to yourself and other players. Want to be the Seer? Go ahead. Want Sparkle to be a Werewolf? Done.
 - **Peek into AI thinking** — Logs output each AI character's full context: what information they see, how they reason, and why they make each decision. See how Kafka weaves her rhetoric, or Silver Wolf's inner monologue before a vote.
 
-## Project Structure
+### CLI Client
 
-```
-├── server.js            # Entry point
-├── server-core.js       # WebSocket server, player management
-├── cli_client.js        # CLI client
-├── engine/              # Game engine (pure logic, no network/AI deps)
-│   ├── main.js          #   GameEngine
-│   ├── phase.js         #   PhaseManager + phase flow
-│   ├── player.js        #   PlayerController
-│   ├── roles.js         #   Role definitions
-│   ├── config.js        #   Board presets, rules, win conditions
-│   ├── constants.js     #   Enums and constants
-│   ├── vote.js          #   Vote management
-│   └── message.js       #   Messages and visibility
-├── ai/                  # AI system
-│   ├── controller.js    #   AIController + AIManager
-│   ├── agent/           #   Agent core (LLM calls, tools, context compression)
-│   ├── profiles/        #   Character personality profiles (background/thinking/speaking)
-│   └── strategy/        #   Per-board role strategies
-├── public/              # Frontend (vanilla JS + CSS)
-└── test/                # Tests (custom framework)
+You can invite your Claude Code / Codex to play with you using the CLI client:
+
+```bash
+node cli_client.js --start --name MyName --preset 9-standard
+node cli_client.js --status          # Check current state
+node cli_client.js --action <number> # Perform an action
+node cli_client.js --speak "message" # Speak
 ```
 
 ## Tech Stack
@@ -161,14 +137,6 @@ bash stop_server.sh
 **Which LLMs are supported?**
 
 Any model compatible with the OpenAI `/chat/completions` interface, including OpenAI, DeepSeek, GLM, and more. Just configure `base_url` and `model` in `api_key.conf`.
-
-## Roadmap
-
-- [ ] More character personalities
-- [ ] More board presets
-- [ ] Online multiplayer (room system)
-- [ ] Game replay and review
-- [ ] Spectator system
 
 ---
 

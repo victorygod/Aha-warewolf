@@ -93,17 +93,6 @@ npm start
 
 打开 http://localhost:3000，加入房间，开始游戏。
 
-### CLI 客户端
-
-除了浏览器，你也可以用命令行客户端体验游戏，适合调试和快速模拟：
-
-```bash
-node cli_client.js --start --name MyName --preset 9-standard
-node cli_client.js --status          # 查看当前状态
-node cli_client.js --action <number> # 执行操作
-node cli_client.js --speak "message" # 发言
-```
-
 ## 调试模式
 
 ```bash
@@ -115,28 +104,15 @@ node server.js --debug
 - **自选角色** — 你可以指定自己和其他玩家的身份，想当预言家就当预言家，想让花火当狼人就让花火当狼人
 - **窥视 AI 思维** — 日志中会输出每个 AI 角色的完整上下文，包括它看到了什么信息、如何推理、为什么做出这个决定。你可以看到卡芙卡是如何编织话术的，也可以看到银狼在投票前的内心吐槽
 
-## 项目结构
+### CLI 客户端
 
-```
-├── server.js            # 入口
-├── server-core.js       # WebSocket 服务器，玩家管理
-├── cli_client.js        # 命令行客户端
-├── engine/              # 游戏引擎（纯逻辑，无网络/AI依赖）
-│   ├── main.js          #   GameEngine
-│   ├── phase.js         #   PhaseManager + 阶段流程
-│   ├── player.js        #   PlayerController
-│   ├── roles.js         #   角色定义
-│   ├── config.js        #   板子配置、规则、胜负判定
-│   ├── constants.js     #   枚举常量
-│   ├── vote.js          #   投票管理
-│   └── message.js       #   消息与可见性
-├── ai/                  # AI 系统
-│   ├── controller.js    #   AIController + AIManager
-│   ├── agent/           #   Agent 核心（LLM 调用、工具、上下文压缩）
-│   ├── profiles/        #   角色人格档案（background/thinking/speaking）
-│   └── strategy/        #   各板子角色策略
-├── public/              # 前端（原生 JS + CSS）
-└── test/                # 测试（自建框架）
+你可以邀请你的claude code/codex使用CLI客户端陪你一起游戏：
+
+```bash
+node cli_client.js --start --name MyName --preset 9-standard
+node cli_client.js --status          # 查看当前状态
+node cli_client.js --action <number> # 执行操作
+node cli_client.js --speak "message" # 发言
 ```
 
 ## 技术栈
@@ -161,14 +137,6 @@ bash stop_server.sh
 **支持哪些 LLM？**
 
 任何兼容 OpenAI `/chat/completions` 接口的模型均可使用，包括 OpenAI、DeepSeek、GLM 等。在 `api_key.conf` 中配置 `base_url` 和 `model` 即可。
-
-## Roadmap
-
-- [ ] 更多角色人格
-- [ ] 更多板子配置
-- [ ] 在线多人模式（房间系统）
-- [ ] 游戏回放与复盘
-- [ ] 观战系统
 
 ---
 
