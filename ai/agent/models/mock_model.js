@@ -25,6 +25,10 @@ class MockModel {
   }
 
   async call(context) {
+    if (context.action === 'compact') {
+      return this._compactResponse(context);
+    }
+
     const record = {
       phase: context.phase,
       action: context.action,
@@ -266,6 +270,16 @@ class MockModel {
   // 获取特定阶段的调用记录
   getCallsByPhase(phase) {
     return this.callHistory.filter(r => r.phase === phase);
+  }
+
+  _compactResponse(context) {
+    const messages = context._messagesForLLM || [];
+    const nonSystemContent = messages
+      .filter(m => m.role !== 'system')
+      .map(m => m.content || '')
+      .filter(c => c)
+      .join('\n');
+    return { raw: { content: `[[${nonSystemContent}]]` }, messages };
   }
 
   // 清空调用历史

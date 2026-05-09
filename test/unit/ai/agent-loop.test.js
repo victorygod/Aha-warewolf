@@ -28,15 +28,13 @@ function makeMockModel(toolName, toolId, args) {
 
 function makeAgentAndContext(action, toolName, callId, args) {
   const mockModel = { isAvailable: () => true, call: makeCallFn(toolName, callId, args) };
-  const agent = new Agent(1, { mockOptions: {} });
+  const agent = new Agent({ mockOptions: {} });
   agent._models = [{ model: mockModel, name: 'MockModel' }];
   agent.mm.messages = [{ role: 'system', content: 'test system' }];
 
-  const newContent = 'test content';
-  const newMessages = [];
   const llmView = [
     { role: 'system', content: 'test system' },
-    { role: 'user', content: newContent }
+    { role: 'user', content: 'test content' }
   ];
   const tools = [{ type: 'function', function: { name: toolName, description: toolName, parameters: {} } }];
   const context = {
@@ -48,14 +46,14 @@ function makeAgentAndContext(action, toolName, callId, args) {
     self: { id: 1, name: '玩家1' }
   };
 
-  return { mockModel, agent, context, newContent, newMessages, llmView, tools };
+  return { mockModel, agent, context, llmView, tools };
 }
 
 describe('_agentLoop tool_calls消息格式', () => {
   it('llmView 正确添加 tool_calls 和 tool 消息', async () => {
-    const { mockModel, agent, context, newContent, newMessages, llmView, tools } = makeAgentAndContext('action_post_vote', 'action_post_vote', 'call_test_123', { target: '3' });
+    const { mockModel, agent, context, llmView, tools } = makeAgentAndContext('action_post_vote', 'action_post_vote', 'call_test_123', { target: '3' });
 
-    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, newContent, newMessages, llmView, tools, '【白天投票】');
+    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, llmView, tools);
 
     const assistantMsgs = llmView.filter(m => m.role === 'assistant');
     const assistantWithToolCalls = assistantMsgs.find(m => m.tool_calls && m.tool_calls.length > 0);
@@ -66,41 +64,38 @@ describe('_agentLoop tool_calls消息格式', () => {
     if (!toolMsgs[toolMsgs.length - 1].tool_call_id) throw new Error('tool 消息应有 tool_call_id');
   });
 
-  it('this.messages 正确保存 tool_calls 和 tool 消息', async () => {
-    const { mockModel, agent, context, newContent, newMessages, llmView, tools } = makeAgentAndContext('action_post_vote', 'action_post_vote', 'call_vote_456', { target: '2' });
+  it('mm.messages 正确保存 tool_calls 和 tool 消息', async () => {
+    const { mockModel, agent, context, llmView, tools } = makeAgentAndContext('action_post_vote', 'action_post_vote', 'call_vote_456', { target: '2' });
 
-    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, newContent, newMessages, llmView, tools, '【白天投票】');
+    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, llmView, tools);
 
-    if (agent.mm.messages.length !== 4) throw new Error('agent.mm.messages 应有 4 条消息');
+    if (agent.mm.messages.length !== 3) throw new Error('agent.mm.messages 应有 3 条消息（system + assistant + tool）');
     if (agent.mm.messages[0].role !== 'system') throw new Error('第一条应为 system');
 
-    const userMsg = agent.mm.messages[1];
-    if (userMsg.role !== 'user') throw new Error('第二条应为 user');
-
-    const assistantMsg = agent.mm.messages[2];
-    if (assistantMsg.role !== 'assistant') throw new Error('第三条应为 assistant');
+    const assistantMsg = agent.mm.messages[1];
+    if (assistantMsg.role !== 'assistant') throw new Error('第二条应为 assistant');
     if (!assistantMsg.tool_calls) throw new Error('assistant 消息应有 tool_calls');
     if (assistantMsg.tool_calls[0].function.name !== 'action_post_vote') throw new Error('tool_calls 应为 action_post_vote');
 
-    const toolMsg = agent.mm.messages[3];
-    if (toolMsg.role !== 'tool') throw new Error('第四条应为 tool');
+    const toolMsg = agent.mm.messages[2];
+    if (toolMsg.role !== 'tool') throw new Error('第三条应为 tool');
     if (!toolMsg.tool_call_id) throw new Error('tool 消息应有 tool_call_id');
   });
 
   it('发言阶段保存 tool_calls + tool', async () => {
-    const { mockModel, agent, context, newContent, newMessages, llmView, tools } = makeAgentAndContext('action_day_discuss', 'action_day_discuss', 'call_speech_789', { content: '我是好人，请大家相信我。' });
+    const { mockModel, agent, context, llmView, tools } = makeAgentAndContext('action_day_discuss', 'action_day_discuss', 'call_speech_789', { content: '我是好人，请大家相信我。' });
 
-    await agent._agentLoop(mockModel, context, { name: 'action_day_discuss' }, newContent, newMessages, llmView, tools, '【白天发言】');
+    await agent._agentLoop(mockModel, context, { name: 'action_day_discuss' }, llmView, tools);
 
-    if (agent.mm.messages.length !== 4) throw new Error('agent.mm.messages 应有 4 条消息');
+    if (agent.mm.messages.length !== 3) throw new Error('agent.mm.messages 应有 3 条消息');
 
-    const assistantMsg = agent.mm.messages[2];
-    if (assistantMsg.role !== 'assistant') throw new Error('第三条应为 assistant');
+    const assistantMsg = agent.mm.messages[1];
+    if (assistantMsg.role !== 'assistant') throw new Error('第二条应为 assistant');
     if (!assistantMsg.tool_calls) throw new Error('发言阶段 assistant 消息应有 tool_calls');
     if (assistantMsg.tool_calls[0].function.name !== 'action_day_discuss') throw new Error('tool_calls 应为 action_day_discuss');
 
-    const toolMsg = agent.mm.messages[3];
-    if (toolMsg.role !== 'tool') throw new Error('第四条应为 tool');
+    const toolMsg = agent.mm.messages[2];
+    if (toolMsg.role !== 'tool') throw new Error('第三条应为 tool');
     if (!toolMsg.content.includes('我是好人')) throw new Error('tool result 应包含发言内容');
   });
 });
@@ -108,15 +103,13 @@ describe('_agentLoop tool_calls消息格式', () => {
 describe('阶段决策消息历史', () => {
   it('day_discuss 阶段存储 assistant(tool_calls) + tool', async () => {
     const mockModel = makeMockModel('action_day_discuss', 'call_test_speech', { content: '我是好人，请大家相信我。' });
-    const agent = new Agent(1, { mockOptions: {} });
+    const agent = new Agent({ mockOptions: {} });
     agent._models = [{ model: mockModel, name: 'MockModel' }];
     agent.mm.messages = [{ role: 'system', content: 'test system' }];
 
-    const newContent = 'test content';
-    const newMessages = [];
     const llmView = [
       { role: 'system', content: 'test system' },
-      { role: 'user', content: newContent }
+      { role: 'user', content: 'test content' }
     ];
     const tools = [{ type: 'function', function: { name: 'action_day_discuss' } }];
     const context = {
@@ -128,7 +121,7 @@ describe('阶段决策消息历史', () => {
       self: { id: 1, name: '玩家1' }
     };
 
-    await agent._agentLoop(mockModel, context, { name: 'action_day_discuss' }, newContent, newMessages, llmView, tools, '【白天发言】');
+    await agent._agentLoop(mockModel, context, { name: 'action_day_discuss' }, llmView, tools);
 
     const msgs = agent.mm.messages;
     const lastMsg = msgs[msgs.length - 1];
@@ -145,15 +138,13 @@ describe('阶段决策消息历史', () => {
 
   it('post_vote 阶段存储 assistant(tool_calls) + tool', async () => {
     const mockModel = makeMockModel('action_post_vote', 'call_test_vote', { target: '3' });
-    const agent = new Agent(1, { mockOptions: {} });
+    const agent = new Agent({ mockOptions: {} });
     agent._models = [{ model: mockModel, name: 'MockModel' }];
     agent.mm.messages = [{ role: 'system', content: 'test system' }];
 
-    const newContent = 'test content';
-    const newMessages = [];
     const llmView = [
       { role: 'system', content: 'test system' },
-      { role: 'user', content: newContent }
+      { role: 'user', content: 'test content' }
     ];
     const tools = [{ type: 'function', function: { name: 'action_post_vote' } }];
     const context = {
@@ -165,7 +156,7 @@ describe('阶段决策消息历史', () => {
       self: { id: 1, name: '玩家1' }
     };
 
-    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, newContent, newMessages, llmView, tools, '【白天投票】');
+    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, llmView, tools);
 
     const msgs = agent.mm.messages;
     const lastMsg = msgs[msgs.length - 1];
@@ -182,15 +173,13 @@ describe('阶段决策消息历史', () => {
 
   it('seer 阶段存储 assistant(tool_calls) + tool', async () => {
     const mockModel = makeMockModel('action_seer', 'call_test_seer', { target: '2' });
-    const agent = new Agent(1, { mockOptions: {} });
+    const agent = new Agent({ mockOptions: {} });
     agent._models = [{ model: mockModel, name: 'MockModel' }];
     agent.mm.messages = [{ role: 'system', content: 'test system' }];
 
-    const newContent = 'test content';
-    const newMessages = [];
     const llmView = [
       { role: 'system', content: 'test system' },
-      { role: 'user', content: newContent }
+      { role: 'user', content: 'test content' }
     ];
     const tools = [{ type: 'function', function: { name: 'action_seer' } }];
     const context = {
@@ -202,7 +191,7 @@ describe('阶段决策消息历史', () => {
       self: { id: 1, name: '玩家1' }
     };
 
-    await agent._agentLoop(mockModel, context, { name: 'action_seer' }, newContent, newMessages, llmView, tools, '【预言家】');
+    await agent._agentLoop(mockModel, context, { name: 'action_seer' }, llmView, tools);
 
     const msgs = agent.mm.messages;
     const lastMsg = msgs[msgs.length - 1];
@@ -237,15 +226,13 @@ describe('多tool_calls边界', () => {
       }
     };
 
-    const agent = new Agent(1, { mockOptions: {} });
+    const agent = new Agent({ mockOptions: {} });
     agent._models = [{ model: mockModel, name: 'MockModel' }];
     agent.mm.messages = [{ role: 'system', content: 'test system' }];
 
-    const newContent = 'test content';
-    const newMessages = [];
     const llmView = [
       { role: 'system', content: 'test system' },
-      { role: 'user', content: newContent }
+      { role: 'user', content: 'test content' }
     ];
     const tools = [
       { type: 'function', function: { name: 'analyze' } },
@@ -260,7 +247,7 @@ describe('多tool_calls边界', () => {
       self: { id: 1, name: '玩家1' }
     };
 
-    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, newContent, newMessages, llmView, tools, '【白天投票】');
+    await agent._agentLoop(mockModel, context, { name: 'action_post_vote' }, llmView, tools);
 
     const assistantMsg = llmView.find(m => m.role === 'assistant' && m.tool_calls);
     const toolMsgs = llmView.filter(m => m.role === 'tool');
@@ -271,7 +258,7 @@ describe('多tool_calls边界', () => {
     const savedAssistant = agent.mm.messages.find(m => m.role === 'assistant' && m.tool_calls);
     const savedTool = agent.mm.messages.find(m => m.role === 'tool');
 
-    if (savedAssistant?.tool_calls?.length !== 1) throw new Error('this.messages 应只保存 1 个 tool_call');
+    if (savedAssistant?.tool_calls?.length !== 1) throw new Error('mm.messages 应只保存 1 个 tool_call');
     if (savedAssistant?.tool_calls?.[0]?.function?.name !== 'action_post_vote') throw new Error('保存的 tool_call 应为 action_post_vote');
     if (savedTool?.tool_call_id !== 'call_vote_2') throw new Error('保存的 tool 消息应对应 action_post_vote');
   });

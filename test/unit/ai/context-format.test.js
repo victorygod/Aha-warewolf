@@ -26,10 +26,12 @@ function createTestGame(playerCount = 9, options = {}) {
   const aiManager = new AIManager(game);
   const aiControllers = new Map();
 
+  game.getAIController = (playerId) => aiControllers.get(playerId);
   game.players.forEach(p => {
     const controller = aiManager.createAI(p.id, {
       agentType: 'mock',
       mockOptions: {
+        compressionEnabled: false,
         presetResponses: {
           speak: { content: '过。' },
           day_discuss: { content: '过。' },
@@ -47,6 +49,10 @@ function createTestGame(playerCount = 9, options = {}) {
   game.start = async function() {
     this.phaseManager = new PhaseManager(this);
   };
+
+  game.message.on('message:added', (msg) => {
+    aiManager.onMessage(msg);
+  });
 
   return { game, aiControllers };
 }
@@ -114,7 +120,8 @@ describe('PhaseManager 驱动上下文', () => {
     for (const player of game.players) {
       const controller = aiControllers.get(player.id);
       if (controller) {
-        controller.updateSystemMessage();
+        const context = controller.buildContext({});
+        controller.agent.updateSystemMessage(context, 'game');
       }
     }
 
@@ -161,7 +168,8 @@ describe('PhaseManager 驱动上下文', () => {
     for (const player of game.players) {
       const controller = aiControllers.get(player.id);
       if (controller) {
-        controller.updateSystemMessage();
+        const context = controller.buildContext({});
+        controller.agent.updateSystemMessage(context, 'game');
       }
     }
 
@@ -202,7 +210,8 @@ describe('PhaseManager 驱动上下文', () => {
     for (const player of game.players) {
       const controller = aiControllers.get(player.id);
       if (controller) {
-        controller.updateSystemMessage();
+        const context = controller.buildContext({});
+        controller.agent.updateSystemMessage(context, 'game');
       }
     }
 

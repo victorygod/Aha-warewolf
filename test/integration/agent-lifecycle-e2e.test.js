@@ -55,14 +55,14 @@ describe('Agent 生命周期集成测试', () => {
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const controller = server.core.aiManager.controllers.values().next().value;
-    const sysMsg = controller.agent.messages[0];
+    const sysMsg = controller.agent.mm.messages[0];
     if (!sysMsg || sysMsg.role !== 'system') throw new Error('应有 system 消息');
     if (sysMsg.content.includes('狼人杀游戏')) {
       throw new Error('游戏结束后 system prompt 应为 chat 模式，不应包含游戏角色信息');
     }
   });
 
-  it('L3: handleReset 保留 Agent 且重置水位线', async () => {
+  it('L3: handleReset 保留 Agent', async () => {
     await server.start();
     const human = await server.addHuman('人类玩家', {
       speak: { content: '过。' },
@@ -78,14 +78,12 @@ describe('Agent 生命周期集成测试', () => {
 
     const controller = server.core.aiManager.controllers.values().next().value;
     const originalAgent = controller.agent;
-    const playerIdBefore = controller.playerId;
 
     await server.core.handleReset({}, {});
 
     const controllerAfter = server.core.aiManager.controllers.values().next().value;
     if (!controllerAfter) throw new Error('reset 后应有 controller');
     if (controllerAfter.agent !== originalAgent) throw new Error('reset 后 Agent 应保持同一实例');
-    if (controllerAfter.agent.lastProcessedId !== 0) throw new Error('reset 后 lastProcessedId 应为 0');
   });
 
   it('L4: handleReset 保留 mockModel 配置', async () => {
@@ -111,7 +109,7 @@ describe('Agent 生命周期集成测试', () => {
     if (!controllerAfter.agent.mockModel) throw new Error('reset 后 mockModel 应保留');
   });
 
-  it('L5: startGame 时 enterGame 注入聊天历史', async () => {
+  it('L5: startGame 时 onEnterGame 处理聊天上下文', async () => {
     await server.start();
     const human = await server.addHuman('人类玩家', {
       speak: { content: '过。' },
@@ -121,7 +119,7 @@ describe('Agent 生命周期集成测试', () => {
     });
     await server.addAI(8);
 
-    server.core.chatMessages.push({
+    const chatMsg = {
       id: 1,
       type: 'chat',
       playerId: 'spectator_1',
@@ -129,7 +127,8 @@ describe('Agent 生命周期集成测试', () => {
       content: '大家好',
       timestamp: Date.now(),
       event: 'waiting'
-    });
+    };
+    server.core.chatMessages.push(chatMsg);
     server.core.displayMessages.push({
       id: 1, source: 'chat', displayId: 1,
       type: 'chat', playerId: 'spectator_1',
@@ -137,13 +136,16 @@ describe('Agent 生命周期集成测试', () => {
       timestamp: Date.now(), event: 'waiting'
     });
 
+    if (server.core.aiManager) {
+      server.core.aiManager.onMessage(chatMsg);
+    }
+
     server.startGame();
     await human.waitFor('role_assigned', 5000);
 
     const controller = server.core.aiManager.controllers.values().next().value;
-    const hasChatHistory = controller.agent.messages.some(
-      m => m.content?.includes('旁观者') || m.content?.includes('大家好')
-    );
+    const allContent = controller.agent.mm.messages.map(m => m.content || '').join('\n');
+    const hasChatHistory = allContent.includes('旁观者') || allContent.includes('大家好');
     if (!hasChatHistory) throw new Error('startGame 后 Agent 应包含聊天历史');
   });
 
@@ -174,16 +176,20 @@ describe('Agent 生命周期集成测试', () => {
     const controller = server.core.aiManager.controllers.values().next().value;
     const originalAgent = controller.agent;
 
-    server.core.chatMessages.push({
+    const chatMsg1 = {
       id: 1, type: 'chat', playerId: 'spectator_1',
       playerName: '路人', content: '第一局前聊天', timestamp: Date.now(), event: 'waiting'
-    });
+    };
+    server.core.chatMessages.push(chatMsg1);
     server.core.displayMessages.push({
       id: 1, source: 'chat', displayId: 1,
       type: 'chat', playerId: 'spectator_1',
       playerName: '路人', content: '第一局前聊天',
       timestamp: Date.now(), event: 'waiting'
     });
+    if (server.core.aiManager) {
+      server.core.aiManager.onMessage(chatMsg1);
+    }
 
     server.startGame();
     await server.waitForPhase('game_over', 30000);
@@ -195,22 +201,25 @@ describe('Agent 生命周期集成测试', () => {
 
     if (controller.agent !== originalAgent) throw new Error('reset 后 Agent 应保持同一实例');
 
-    server.core.chatMessages.push({
+    const chatMsg2 = {
       id: 2, type: 'chat', playerId: 'spectator_1',
       playerName: '路人', content: '第二局前聊天', timestamp: Date.now(), event: 'waiting'
-    });
+    };
+    server.core.chatMessages.push(chatMsg2);
     server.core.displayMessages.push({
       id: 2, source: 'chat', displayId: 2,
       type: 'chat', playerId: 'spectator_1',
       playerName: '路人', content: '第二局前聊天',
       timestamp: Date.now(), event: 'waiting'
     });
+    if (server.core.aiManager) {
+      server.core.aiManager.onMessage(chatMsg2);
+    }
 
     server.startGame();
     await human.waitFor('role_assigned', 5000);
 
     if (controller.agent !== originalAgent) throw new Error('第二局开始后 Agent 应保持同一实例');
-    if (controller.agent.lastProcessedId !== 0) throw new Error('第二局开始后 lastProcessedId 应为 0');
   });
 });
 

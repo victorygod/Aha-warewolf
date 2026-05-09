@@ -263,7 +263,7 @@ describe('tools - 退水工具 execute', () => {
   it('继续参选', () => {
     const tool = getTool('action_withdraw');
     const result = tool.execute({ withdraw: false }, {});
-    if (!result.success || !result.skip) throw new Error('不退水应弃权');
+    if (!result.success || result.action.withdraw !== false) throw new Error('不退水应返回withdraw:false');
   });
 });
 

@@ -25,13 +25,17 @@ function createTestGame(playerCount = 9, options = {}) {
   const aiManager = new AIManager(game);
   const aiControllers = new Map();
   game.players.forEach(p => {
-    const controller = aiManager.createAI(p.id, { agentType: 'mock', mockOptions: { presetResponses: {} } });
+    const controller = aiManager.createAI(p.id, { agentType: 'mock', mockOptions: { presetResponses: {}, compressionEnabled: false } });
     aiControllers.set(p.id, controller);
   });
 
   game.getAIController = (playerId) => aiControllers.get(playerId);
   game.assignRoles = function () {};
   game.start = async function () { this.phaseManager = new PhaseManager(this); };
+
+  game.message.on('message:added', (msg) => {
+    aiManager.onMessage(msg);
+  });
 
   return { game, aiControllers, aiManager };
 }
@@ -61,7 +65,10 @@ function setAllAlive(aiControllers, game, actionType, response) {
 function initSystemMessages(game, aiControllers) {
   for (const p of game.players) {
     const ctrl = aiControllers.get(p.id);
-    if (ctrl) ctrl.updateSystemMessage();
+    if (ctrl) {
+      const context = ctrl.buildContext({});
+      ctrl.agent.updateSystemMessage(context, 'game');
+    }
   }
 }
 
@@ -298,9 +305,10 @@ describe('多Agent上下文差异', () => {
     setAllAlive(aiControllers, game, 'action_day_vote', { target: '2' });
     await game.phaseManager.executePhase('day_announce');
     await game.phaseManager.executePhase('day_discuss');
-    const msgs = getLastMessagesForPhase(getMock(aiControllers, 7), 'day_discuss');
-    if (!msgs) throw new Error('村民7应有发言上下文');
-    const lastUser = getLastUserMsg(msgs);
+    const mock = getMock(aiControllers, 7);
+    const speechCall = mock.callHistory.filter(r => r.action === 'action_day_discuss').pop();
+    if (!speechCall) throw new Error('村民7应有发言调用');
+    const lastUser = getLastUserMsg(speechCall.messagesForLLM);
     includes(lastUser, '【白天发言】');
     includes(lastUser, 'thinking7');
   });

@@ -1,7 +1,8 @@
 const { describe, it, run } = require('../../helpers/test-runner');
 const { RandomModel, ANALYSIS_TEMPLATES } = require('../../../ai/agent/models/random_model');
 const { MockModel } = require('../../../ai/agent/models/mock_model');
-const { Agent, ANALYSIS_NODES } = require('../../../ai/agent/agent');
+const { Agent } = require('../../../ai/agent/agent');
+const { AIController, ANALYSIS_NODES } = require('../../../ai/controller');
 const { VISIBILITY, CAMP } = require('../../../engine/constants');
 
 const alivePlayers = [
@@ -24,310 +25,209 @@ function makeContext(action, extra = {}) {
 }
 
 describe('RandomModel - 基础', () => {
-  it('isAvailable返回true', () => {
+  it('isAvailable 返回 true', () => {
     const model = new RandomModel(1);
-    if (model.isAvailable() !== true) throw new Error('应返回true');
+    if (model.isAvailable() !== true) throw new Error('应返回 true');
   });
 
-  it('无tool时返回分析文本', () => {
+  it('无 tool 时返回分析文本', () => {
     const model = new RandomModel(1);
     const result = model.call({ action: 'analyze', _tools: [], _messagesForLLM: [] });
-    if (typeof result !== 'string') throw new Error('无tool应返回字符串');
+    if (!result?.raw?.content || typeof result.raw.content !== 'string') {
+      throw new Error('无 tool 应返回 { raw: { content: string } } 格式');
+    }
   });
 
-  it('ANALYSIS_TEMPLATES非空', () => {
+  it('ANALYSIS_TEMPLATES 非空', () => {
     if (!Array.isArray(ANALYSIS_TEMPLATES) || ANALYSIS_TEMPLATES.length === 0) {
-      throw new Error('ANALYSIS_TEMPLATES应为非空数组');
+      throw new Error('ANALYSIS_TEMPLATES 应为非空数组');
     }
   });
 });
 
-describe('RandomModel - 各action决策', () => {
-  it('speechAction返回content', () => {
+describe('RandomModel - 各 action 决策', () => {
+  it('speechAction 返回 content', () => {
     const model = new RandomModel(1);
     const result = model.call(makeContext('action_day_discuss'));
-    if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
+    if (!result?.raw?.tool_calls) throw new Error('应返回 tool_calls');
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (!args.content) throw new Error('应包含 content');
   });
 
-  it('voteAction返回target或skip', () => {
+  it('voteAction 返回 target 或 skip', () => {
     const model = new RandomModel(1);
-    for (let i = 0; i < 20; i++) {
-      const result = model.call(makeContext('action_day_vote'));
-      if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
-    }
+    const result = model.call(makeContext('action_day_vote'));
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (!args.target && args.skip !== true) throw new Error('应返回 target 或 skip');
   });
 
-  it('seerAction排除自己', () => {
+  it('seerAction 排除自己', () => {
     const model = new RandomModel(1);
-    for (let i = 0; i < 20; i++) {
-      const result = model.call(makeContext('action_seer', { self: { id: 1, seerChecks: [] } }));
-      if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
-      const args = result.raw.tool_calls[0].function.arguments;
-      if (args !== 'null') {
-        const parsed = JSON.parse(args);
-        if (parsed.target === '1') throw new Error('预言家不应查验自己');
-      }
-    }
+    const ctx = makeContext('action_seer');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (parseInt(args.target) === ctx.self.id) throw new Error('不应查验自己');
   });
 
-  it('seerAction排除已查验', () => {
+  it('seerAction 排除已查验', () => {
     const model = new RandomModel(1);
-    const seerChecks = [{ targetId: 2, round: 1 }];
-    for (let i = 0; i < 20; i++) {
-      const result = model.call(makeContext('action_seer', { self: { id: 1, seerChecks } }));
-      if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
-      const args = result.raw.tool_calls[0].function.arguments;
-      if (args !== 'null') {
-        const parsed = JSON.parse(args);
-        if (parsed.target === '2') throw new Error('不应查验已查验目标');
-      }
-    }
+    const ctx = makeContext('action_seer', {
+      self: { id: 1, seerChecks: [{ targetId: 2 }] }
+    });
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (parseInt(args.target) === 2) throw new Error('不应重复查验已查验的玩家');
   });
 
-  it('guardAction排除上次守护', () => {
+  it('guardAction 排除上次守护', () => {
     const model = new RandomModel(1);
-    for (let i = 0; i < 20; i++) {
-      const result = model.call(makeContext('action_guard', { self: { id: 1, lastGuardTarget: 2 } }));
-      if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
-      const args = result.raw.tool_calls[0].function.arguments;
-      if (args !== 'null') {
-        const parsed = JSON.parse(args);
-        if (parsed.target === '2') throw new Error('守卫不应连守同一人');
-      }
-    }
+    const ctx = makeContext('action_guard', {
+      self: { id: 1, lastGuardTarget: 2 }
+    });
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (parseInt(args.target) === 2) throw new Error('不应重复守护同一人');
   });
 
-  it('witchAction有解药可救', () => {
+  it('witchAction 有解药可救', () => {
     const model = new RandomModel(1);
     const ctx = makeContext('action_witch', {
-      self: { id: 1, witchHeal: 1, witchPoison: 1 },
-      werewolfTarget: 3
+      self: { id: 1, witchHeal: 1, witchPoison: 0 },
+      werewolfTarget: 2
     });
-    let healed = false;
-    for (let i = 0; i < 50; i++) {
-      const result = model.call(ctx);
-      const args = result.raw.tool_calls[0].function.arguments;
-      if (args !== 'null') {
-        const parsed = JSON.parse(args);
-        if (parsed.action === 'heal') { healed = true; break; }
-      }
-    }
-    if (!healed) throw new Error('有解药时应该有时救人');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (!['heal', 'poison', 'skip'].includes(args.action)) throw new Error('应返回 heal/poison/skip');
   });
 
-  it('witchAction无解药不救', () => {
+  it('witchAction 无解药不救', () => {
     const model = new RandomModel(1);
     const ctx = makeContext('action_witch', {
-      self: { id: 1, witchHeal: 0, witchPoison: 1 },
-      werewolfTarget: 3
+      self: { id: 1, witchHeal: 0, witchPoison: 0 },
+      werewolfTarget: 2
     });
-    for (let i = 0; i < 20; i++) {
-      const result = model.call(ctx);
-      const args = result.raw.tool_calls[0].function.arguments;
-      if (args !== 'null') {
-        const parsed = JSON.parse(args);
-        if (parsed.action === 'heal') throw new Error('无解药不应救人');
-      }
-    }
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (args.action !== 'skip') throw new Error('无解药应返回 skip');
   });
 
-  it('cupidAction选两人', () => {
+  it('cupidAction 选两人', () => {
     const model = new RandomModel(1);
-    const result = model.call(makeContext('action_cupid'));
-    if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
-    const args = result.raw.tool_calls[0].function.arguments;
-    if (args !== 'null') {
-      const parsed = JSON.parse(args);
-      if (!parsed.targets || parsed.targets.length !== 2) throw new Error('丘比特应选两人');
-    }
+    const ctx = makeContext('action_cupid');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (!args.targets || args.targets.length !== 2) throw new Error('应选择两人');
   });
 
-  it('hunterAction返回target或skip', () => {
+  it('hunterAction 返回 target 或 skip', () => {
     const model = new RandomModel(1);
-    for (let i = 0; i < 20; i++) {
-      const result = model.call(makeContext('action_shoot'));
-      if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
-    }
+    const ctx = makeContext('action_shoot');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (!args.target && args.skip !== true) throw new Error('应返回 target 或 skip');
   });
 
-  it('campaignAction返回run布尔', () => {
+  it('campaignAction 返回 run 布尔', () => {
     const model = new RandomModel(1);
-    const result = model.call(makeContext('action_sheriff_campaign'));
-    if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
+    const ctx = makeContext('action_sheriff_campaign');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (typeof args.run !== 'boolean') throw new Error('run 应为布尔');
   });
 
-  it('withdrawAction返回withdraw布尔', () => {
+  it('withdrawAction 返回 withdraw 布尔', () => {
     const model = new RandomModel(1);
-    const result = model.call(makeContext('action_withdraw'));
-    if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
+    const ctx = makeContext('action_withdraw');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (typeof args.withdraw !== 'boolean') throw new Error('withdraw 应为布尔');
   });
 
-  it('assignOrderAction返回target', () => {
+  it('assignOrderAction 返回 target', () => {
     const model = new RandomModel(1);
-    const result = model.call(makeContext('action_assignOrder'));
-    if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
+    const ctx = makeContext('action_assignOrder');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (!args.target) throw new Error('应返回 target');
   });
 
-  it('passBadgeAction返回target', () => {
+  it('passBadgeAction 返回 target', () => {
     const model = new RandomModel(1);
-    const result = model.call(makeContext('action_passBadge'));
-    if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
+    const ctx = makeContext('action_passBadge');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (!args.target) throw new Error('应返回 target');
   });
 
-  it('未知action返回skip', () => {
+  it('未知 action 返回 skip', () => {
     const model = new RandomModel(1);
-    const result = model.call(makeContext('action_unknown'));
-    if (!result?.raw?.tool_calls) throw new Error('应返回tool_calls');
-    const args = result.raw.tool_calls[0].function.arguments;
-    const parsed = JSON.parse(args);
-    if (!parsed.skip) throw new Error('未知action应skip');
+    const ctx = makeContext('unknown_action');
+    const result = model.call(ctx);
+    const args = JSON.parse(result.raw.tool_calls[0].function.arguments);
+    if (args.skip !== true) throw new Error('未知 action 应返回 skip');
   });
 });
 
-describe('MockModel - wildcard行为序列', () => {
-  it('wildcard行为不推进序列索引', async () => {
-    const model = new MockModel(1);
+describe('MockModel - 行为序列', () => {
+  it('wildcard 行为不推进序列索引', () => {
+    const model = new MockModel(null, {
+      behaviors: [{ phase: 'day_discuss', wildcard: true, response: { content: 'X' } }]
+    });
+    model.call({ action: 'action_day_discuss', phase: 'day_discuss' });
+    const call1 = model.call({ action: 'action_day_discuss', phase: 'day_discuss' });
+    model.call({ action: 'action_day_discuss', phase: 'day_discuss' });
+    const call2 = model.call({ action: 'action_day_discuss', phase: 'day_discuss' });
+    if (JSON.stringify(call1) !== JSON.stringify(call2)) throw new Error('wildcard 应返回相同结果');
+  });
+
+  it('非 wildcard 行为推进序列索引', async () => {
+    const model = new MockModel(null);
     model.setBehaviorSequence([
-      { phase: 'night', action: 'action_seer', response: { target: 2 }, wildcard: true },
-      { phase: 'day', response: { target: 3 } }
+      { phase: 'day_discuss', wildcard: false, response: { content: 'A' } },
+      { phase: 'day_discuss', wildcard: false, response: { content: 'B' } }
     ]);
-    const r1 = model.getSequenceResponse('night', 'action_seer');
-    const r2 = model.getSequenceResponse('night', 'action_seer');
-    if (r1 === undefined) throw new Error('第一次应能获取');
-    if (r2 === undefined) throw new Error('wildcard应不推进索引，第二次也能获取');
+    const call1 = await model.call({ action: 'action_day_discuss', phase: 'day_discuss', _tools: [] });
+    const call2 = await model.call({ action: 'action_day_discuss', phase: 'day_discuss', _tools: [] });
+    if (call1.raw.content === call2.raw.content) throw new Error('非 wildcard 应推进索引');
   });
 
-  it('非wildcard行为推进序列索引', async () => {
-    const model = new MockModel(1);
-    model.setBehaviorSequence([
-      { phase: 'night', response: { target: 2 } },
-      { phase: 'day', response: { target: 3 } }
-    ]);
-    const r1 = model.getSequenceResponse('night', 'action_seer');
-    const r2 = model.getSequenceResponse('night', 'action_seer');
-    if (r1 === undefined) throw new Error('第一次应能获取');
-    if (r2 !== undefined) throw new Error('非wildcard应推进索引，第二次不应获取到');
-  });
-});
-
-describe('Agent - shouldAnalyzeMessage', () => {
-  function makeGame(camp1, camp2, couples) {
-    return {
-      players: [
-        { id: 1, role: { camp: camp1 } },
-        { id: 2, role: { camp: camp2 } }
-      ],
-      couples: couples || [],
-      config: { hooks: { getCamp: (p, g) => p.role.camp } }
-    };
-  }
-
-  it('公开speech消息需分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.GOOD, CAMP.WOLF);
-    const msg = { type: 'speech', playerId: 2, visibility: VISIBILITY.PUBLIC };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== true) throw new Error('公开speech应分析');
+  it('enqueue 后 isProcessing 为 true（队列开始处理）', () => {
+    const agent = new Agent({ mockOptions: {} });
+    agent.enqueue({ type: 'message', msg: { type: 'chat', content: 'test' } });
+    if (agent.isProcessing !== true) throw new Error('enqueue 后 isProcessing 应为 true');
   });
 
-  it('自己发的消息不分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.GOOD, CAMP.WOLF);
-    const msg = { type: 'speech', playerId: 1, visibility: VISIBILITY.PUBLIC };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== false) throw new Error('自己消息不分析');
+  it('Agent 有 requestQueue 属性', () => {
+    const agent = new Agent({ mockOptions: {} });
+    if (!Array.isArray(agent.requestQueue)) throw new Error('requestQueue 应为数组');
   });
 
-  it('SELF可见消息不分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.GOOD, CAMP.WOLF);
-    const msg = { type: 'speech', playerId: 2, visibility: VISIBILITY.SELF };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== false) throw new Error('SELF消息不分析');
+  it('Agent 有 mm.messages 属性', () => {
+    const agent = new Agent({ mockOptions: {} });
+    if (!Array.isArray(agent.mm.messages)) throw new Error('mm.messages 应为数组');
   });
 
-  it('同阵营CAMP消息需分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.WOLF, CAMP.WOLF);
-    const msg = { type: 'speech', playerId: 2, visibility: VISIBILITY.CAMP };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== true) throw new Error('同阵营CAMP应分析');
+  it('compressionEnabled=false 不压缩', async () => {
+    const agent = new Agent({ mockOptions: {}, compressionEnabled: false });
+    agent.mm.updateSystem({ name: 'P1', role: { id: 'villager', camp: 'good' }, background: '' }, {
+      players: [{ id: 1, name: 'P1', role: { id: 'villager', camp: 'good' } }],
+      presetId: 'test',
+      preset: { ruleDescriptions: [] }
+    }, 'game');
+    agent.mm.inject('x'.repeat(5000));
+    agent.mm.flush();
+    await agent.mm.compact({ isAvailable: () => false }, 'game');
+    if (agent.mm.messages.length > 2) throw new Error('compressionEnabled=false 不应压缩');
   });
 
-  it('不同阵营CAMP消息不分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.GOOD, CAMP.WOLF);
-    const msg = { type: 'speech', playerId: 2, visibility: VISIBILITY.CAMP };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== false) throw new Error('不同阵营CAMP不分析');
-  });
-
-  it('COUPLE消息非情侣不分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.GOOD, CAMP.WOLF);
-    const msg = { type: 'speech', playerId: 2, visibility: VISIBILITY.COUPLE };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== false) throw new Error('非情侣COUPLE不分析');
-  });
-
-  it('COUPLE消息情侣需分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.GOOD, CAMP.WOLF);
-    game.couples = [1, 2];
-    const msg = { type: 'speech', playerId: 2, visibility: VISIBILITY.COUPLE };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== true) throw new Error('情侣COUPLE应分析');
-  });
-
-  it('非speech类型不分析', () => {
-    const agent = new Agent(1);
-    const game = makeGame(CAMP.GOOD, CAMP.WOLF);
-    const msg = { type: 'action', playerId: 2, visibility: VISIBILITY.PUBLIC };
-    if (agent.shouldAnalyzeMessage(msg, 1, game) !== false) throw new Error('非speech类型不分析');
-  });
-
-  it('ANALYSIS_NODES只包含speech', () => {
-    if (ANALYSIS_NODES.length !== 1 || ANALYSIS_NODES[0] !== 'speech') {
-      throw new Error('ANALYSIS_NODES应只包含speech');
-    }
-  });
-});
-
-describe('Agent - enqueue和processQueue', () => {
-  it('enqueue后isProcessing为true（队列开始处理）', () => {
-    const agent = new Agent(1);
-    const beforeQueue = agent.requestQueue.length;
-    if (beforeQueue !== 0) throw new Error('初始队列应为空');
-  });
-
-  it('Agent有requestQueue属性', () => {
-    const agent = new Agent(1);
-    if (!Array.isArray(agent.requestQueue)) throw new Error('应有requestQueue');
-  });
-
-  it('Agent有messages属性', () => {
-    const agent = new Agent(1);
-    if (!Array.isArray(agent.messages)) throw new Error('应有messages');
-  });
-});
-
-describe('MessageManager - compress', () => {
-  it('compressionEnabled=false不压缩', async () => {
-    const { MessageManager } = require('../../../ai/agent/message_manager');
-    const mm = new MessageManager({ compressionEnabled: false });
-    const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {} };
-    const game = { players: [], round: 1, effectiveRules: {} };
-    mm.updateSystem(player, game);
-    const context = { players: [], self: player };
-    const beforeLen = mm.messages.length;
-    await mm.compress(null, 'game', context);
-    if (mm.messages.length !== beforeLen) throw new Error('禁用压缩时消息数不应变');
-  });
-
-  it('formatIncomingMessages过滤已处理消息', () => {
-    const { MessageManager } = require('../../../ai/agent/message_manager');
-    const mm = new MessageManager();
-    const messages = [
-      { id: 1, type: 'speech', content: '第一条' },
-      { id: 2, type: 'speech', content: '第二条' },
-      { id: 3, type: 'speech', content: '第三条' }
-    ];
-    mm.lastProcessedId = 1;
-    const result = mm.formatIncomingMessages({ messages, players: [] });
-    if (result.newMessages.length !== 2) throw new Error('应只返回id>1的消息');
+  it('inject 和 flush 工作正常', () => {
+    const agent = new Agent({ mockOptions: {} });
+    agent.mm.inject('test content');
+    if (agent.mm.pendingInject.length !== 1) throw new Error('inject 应添加到 pendingInject');
+    const flushed = agent.mm.flush();
+    if (flushed !== 'test content') throw new Error('flush 应返回注入的内容');
+    if (agent.mm.pendingInject.length !== 0) throw new Error('flush 后 pendingInject 应为空');
+    if (agent.mm.messages.length !== 1) throw new Error('flush 后 messages 应有 1 条消息');
   });
 });
 

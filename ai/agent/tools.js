@@ -399,7 +399,7 @@ registerTool({
       parameters: {
         type: 'object',
         properties: {
-          target: { type: 'integer', description: '要带走的玩家位置编号，弃权填 null', enum: candidates }
+          target: { type: 'integer', description: '要带走的玩家位置编号，放弃开枪填 null', enum: [...candidates, null] }
         },
         required: []
       }
@@ -508,11 +508,7 @@ registerTool({
       return { success: false, error: '参数类型错误: withdraw 应为布尔值' };
     }
 
-    if (!withdraw) {
-      return { success: true, skip: true };
-    }
-
-    return { success: true, action: { withdraw: true } };
+    return { success: true, action: { withdraw: !!withdraw } };
   }
 });
 

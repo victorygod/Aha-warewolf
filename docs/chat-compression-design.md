@@ -379,17 +379,19 @@ updateSystem(player, game, mode = 'game') {
 | 编排层 | Agent | 流程编排、队列管理 | 不直接操作 messages |
 | 存储层 | MessageManager | 消息存储、压缩执行 | 不知道场景概念 |
 
-**越界逻辑下沉**：当前 ServerCore 中有以下逻辑违反三层边界，需下沉到 Agent 层：
+**越界逻辑下沉**：ServerCore 中有以下逻辑违反三层边界，已下沉到 Agent 层：
 
-1. **delta 过滤**：`startGame` 和 `_handleChatMentions` 中 ServerCore 用 `agent.lastChatMessageId` 做 `displayMessages.filter`，然后格式化后传给 Agent。水位线是 Agent 的内部状态，过滤和格式化应由 Agent 完成。ServerCore 只传原始数据（消息列表 + 当前水位线），Agent 自己过滤、格式化、更新水位线。
+1. **delta 过滤**：`startGame` 中 ServerCore 传原始 `chatMessages` + `chatMessageId` 给 `enterGame`，Agent 内部做过滤、格式化、更新水位线。`_handleChatMentions` 中 `handleMention` 方法封装了 delta 过滤和水位线更新。
 
-2. **context 构建**：`_executeAIChat` 中 `const context = { self: player, players: this.game.players || [] }` 是 Agent 层的概念。`postGameCompress` 和 `resetForNewGame` 的 context 应由 Agent 内部构建，ServerCore 只传 `player` 和 `game`。
+2. **context 构建**：`postGameCompress(player, game)` 和 `resetForNewGame(player, game)` 的 context 由 Agent 内部构建，ServerCore 只传 `player` 和 `game`。
 
-3. **`_formatChatMessagesForAI`**：格式化聊天消息为文本是 Agent 层的职责，应移到 Agent 或 formatter。
+3. **`_formatChatMessagesForAI`**：已移到 `formatter.js` 的 `formatChatMessages`，`_handleChatMentions` 通过 `controller.handleMention` 间接调用。
 
-4. **`_buildGameInfoMessage`**：游戏结果文本组装是 Agent 层的职责，应移到 Agent。ServerCore 只负责触发 `appendContent`，不替 Agent 组装内容。
+4. **`_buildGameInfoMessage`**：已移到 `formatter.js` 的 `buildGameOverInfo`，通过 `controller.agent.appendGameOverInfo` 调用。
 
-5. **`_supplementDeadAIMessages`**：直接访问 `controller.agent.mm.lastProcessedId`，应通过 Agent 方法暴露。
+5. **`_supplementDeadAIMessages`**：已移到 `controller.supplementDeadMessages(game)`，通过 `controller.agent.lastProcessedId` getter 访问水位线。
+
+6. **`_triggerAIPostGameChat` 中的 playersInfo 构建**：已移到 `controller.buildGameOverChatContext(game)`，ROLE_NAMES 映射和玩家信息组装属于 Agent 层知识。
 
 ### 6.2 Agent
 
@@ -505,20 +507,15 @@ if (this.aiManager) {
 }
 ```
 
-**修改 4**：`_handleChatMentions` 中传原始消息列表和水位线给 Agent，由 Agent 自行过滤：
+**修改 4**：`_handleChatMentions` 中 @检测仍在 ServerCore，delta 过滤和水位线更新下沉到 AIController：
 
 ```js
-const lastId = controller.agent.lastChatMessageId || 0;
-const recentChat = this.chatMessages.filter(m => m.id > lastId && m.id <= chatMsg.id);
-controller.agent.lastChatMessageId = chatMsg.id;
-
-const chatContext = {
-  event: 'mentioned',
-  mentioner: chatMsg.playerName,
-  mentionContent: chatMsg.content,
-  recentChat: recentChat.length > 0 ? formatChatMessages(recentChat) : ''
-};
-this._enqueueAIChat(controller, chatContext);
+const controller = this._findAIControllerByPrefix(textAfterAt);
+if (controller && !mentionedControllers.has(controller)) {
+  mentionedControllers.add(controller);
+  const chatContext = controller.handleMention(chatMsg, this.chatMessages);
+  this._enqueueAIChat(controller, chatContext);
+}
 ```
 
 **修改 5**：`_executeAIChat` 中 AI 发送消息后更新 `lastChatMessageId`，避免下次 delta 重复包含自己的消息：
@@ -528,14 +525,14 @@ this._enqueueAIChat(controller, chatContext);
 controller.agent.lastChatMessageId = this.chatMessageId;
 ```
 
-**修改 6**：`_supplementDeadAIMessages` 通过 Agent 方法暴露 `lastProcessedId`，不再直接访问 `agent.mm`：
+**修改 6**：`_supplementDeadAIMessages` 移到 AIController，`_triggerAIPostGameChat` 中的 playersInfo 构建移到 AIController：
 
 ```js
-// 修改前
-const lastId = controller.agent.mm.lastProcessedId;
-
-// 修改后
-const lastId = controller.agent.lastProcessedId;
+// _triggerAIPostGameChat 简化为：
+if (!player.alive) {
+  controller.supplementDeadMessages(this.game);
+}
+const chatContext = controller.buildGameOverChatContext(this.game);
 ```
 
 ### 6.4 MessageManager 变更汇总

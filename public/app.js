@@ -1913,7 +1913,7 @@ function updateDefaultAction(state) {
 
   // 游戏中观战者：显示视角切换栏
   if (controller.isSpectator && state.phase !== 'waiting' && state.phase !== 'game_over') {
-    elements.actionPrompt.innerHTML = `<span style="font-size:12px;">👁 观战中${spectatorCount > 1 ? ` (${spectatorCount}人)` : ''}</span>`;
+    elements.actionPrompt.innerHTML = `<span style="font-size:13px;">👁 观战中${spectatorCount > 1 ? ` (${spectatorCount}人)` : ''}</span>`;
     const bar = document.getElementById('spectator-view-bar');
     bar.classList.remove('hidden');
     bar.querySelectorAll('.view-btn').forEach(btn => {
@@ -1930,7 +1930,7 @@ function updateDefaultAction(state) {
   }
 
   if (myPlayer && !myPlayer.alive && state.phase !== 'last_words' && state.phase !== 'game_over' && state.phase !== 'post_vote') {
-    elements.actionPrompt.innerHTML = '<span style="font-size:12px;">你已死亡，观战中...</span>';
+    elements.actionPrompt.innerHTML = '<span style="font-size:13px;">你已死亡，观战中...</span>';
     return;
   }
 
@@ -1966,13 +1966,13 @@ function updateDefaultAction(state) {
 
     // 状态文字
     if (controller.isSpectator) {
-      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">👁 观战中 | ${current}/${total}</span>`;
+      elements.actionPrompt.innerHTML = `<span style="font-size:13px;">👁 观战中 | ${current}/${total}</span>`;
     } else if (myPlayer && myPlayer.ready) {
-      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">已准备 (${readyCount}/${total})</span>`;
+      elements.actionPrompt.innerHTML = `<span style="font-size:13px;">已准备 (${readyCount}/${total})</span>`;
     } else if (myPlayer && !myPlayer.ready) {
-      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">等待准备... (${readyCount}/${total})</span>`;
+      elements.actionPrompt.innerHTML = `<span style="font-size:13px;">等待准备... (${readyCount}/${total})</span>`;
     } else {
-      elements.actionPrompt.innerHTML = `<span style="font-size:12px;">${current < total ? `等待玩家加入... (${current}/${total})` : '人已齐...'}</span>`;
+      elements.actionPrompt.innerHTML = `<span style="font-size:13px;">${current < total ? `等待玩家加入... (${current}/${total})` : '人已齐...'}</span>`;
     }
 
     // 观战者计数徽章（绝对定位，不影响布局）

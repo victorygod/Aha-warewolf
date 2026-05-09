@@ -101,29 +101,20 @@ function buildToolResultMessage(toolName, action, context) {
   }
 }
 
-function formatChatMessages(messages) {
-  return messages.map(m => `${m.playerName}: ${m.content}`).join('\n');
-}
-
-function buildGameOverInfo(game) {
-  if (!game) return null;
-  const presetName = game.preset?.name || '标准局';
-  const winner = game.winner;
-  const winnerText = winner === 'good' ? '好人阵营获胜' : winner === 'wolf' ? '狼人阵营获胜' : '第三方阵营获胜';
-  const ROLE_NAMES = { werewolf: '狼人', seer: '预言家', witch: '女巫', hunter: '猎人', guard: '守卫', villager: '村民', idiot: '白痴', cupid: '丘比特' };
-  const playersInfo = game.players.map((p, i) => {
-    const roleId = p.role?.id || p.role || '未知';
-    const roleName = ROLE_NAMES[roleId] || roleId;
-    const status = p.alive ? '存活' : '死亡';
-    return `${i + 1}号${p.name}: ${roleName} - ${status}`;
-  }).join('\n');
-  return `【上局游戏】${presetName} | ${winnerText}\n${playersInfo}`;
+function formatMessageToText(msg, selfId) {
+  if (msg.type === MSG.CHAT || msg.event === 'chat') {
+    if (msg.playerId === selfId && msg.isAI) return null;
+    return `${msg.playerName}: ${msg.content}`;
+  }
+  if (msg.type === MSG.GAME_OVER) {
+    return msg.content;
+  }
+  return msg.content || null;
 }
 
 module.exports = {
   getPlayerDisplay,
   formatMessageHistory,
   buildToolResultMessage,
-  formatChatMessages,
-  buildGameOverInfo
+  formatMessageToText
 };

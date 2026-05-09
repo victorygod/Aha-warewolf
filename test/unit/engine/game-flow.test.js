@@ -79,7 +79,10 @@ function setAllAlive(controllers, game, actionType, response) {
 function initSystemMessages(game, controllers) {
   for (const p of game.players) {
     const ctrl = game.getAIController(p.id);
-    if (ctrl) ctrl.updateSystemMessage();
+    if (ctrl) {
+      const context = ctrl.buildContext({});
+      ctrl.agent.updateSystemMessage(context, 'game');
+    }
   }
 }
 

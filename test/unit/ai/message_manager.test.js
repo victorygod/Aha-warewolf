@@ -30,19 +30,37 @@ describe('MessageManager - updateSystem', () => {
   });
 });
 
-describe('MessageManager - appendTurn', () => {
-  it('追加消息并更新lastProcessedId', () => {
+describe('MessageManager - inject/flush', () => {
+  it('inject + flush 追加消息到 messages', () => {
     const { MessageManager } = require('../../../ai/agent/message_manager');
     const mm = new MessageManager();
     const player = { id: 1, name: '张三', role: { id: 'seer', name: '预言家', camp: 'good' }, alive: true, state: {} };
     const game = { players: [], round: 1, effectiveRules: {} };
     mm.updateSystem(player, game);
     const beforeLen = mm.messages.length;
-    const llmMsgs = [{ role: 'user', content: '测试消息' }];
-    const gameMsgs = [{ id: 5, type: 'speech', content: '发言' }];
-    mm.appendTurn(llmMsgs, gameMsgs);
+    mm.inject('测试消息1');
+    mm.inject('测试消息2');
+    const flushed = mm.flush();
     if (mm.messages.length <= beforeLen) throw new Error('消息应增加');
-    if (mm.lastProcessedId !== 5) throw new Error(`lastProcessedId应为5，实际${mm.lastProcessedId}`);
+    if (mm.messages[mm.messages.length - 1].role !== 'user') throw new Error('flush 追加应为 user 消息');
+    if (!flushed.includes('测试消息1')) throw new Error('flush 内容应包含注入的文本');
+    if (!flushed.includes('测试消息2')) throw new Error('flush 内容应包含注入的文本');
+  });
+
+  it('inject 空内容不追加', () => {
+    const { MessageManager } = require('../../../ai/agent/message_manager');
+    const mm = new MessageManager();
+    mm.inject(null);
+    mm.inject('');
+    mm.inject(undefined);
+    if (mm.pendingInject.length !== 0) throw new Error('空内容不应注入');
+  });
+
+  it('flush 无注入时返回 null', () => {
+    const { MessageManager } = require('../../../ai/agent/message_manager');
+    const mm = new MessageManager();
+    const result = mm.flush();
+    if (result !== null) throw new Error('无注入时 flush 应返回 null');
   });
 });
 

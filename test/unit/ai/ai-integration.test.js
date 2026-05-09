@@ -27,24 +27,21 @@ function createTestGame(presetId = '9-standard') {
   return game;
 }
 
-describe('game.aiManager 绑定', () => {
-  it('game.aiManager 绑定验证', () => {
+describe('AIManager 绑定', () => {
+  it('AIManager 绑定验证', () => {
     const game = createTestGame();
     const aiManager = new AIManager(game);
-    game.aiManager = aiManager;
+    game.getAIController = (id) => aiManager.get(id);
 
-    if (game.aiManager !== aiManager) throw new Error('game.aiManager 应该正确绑定');
-    if (!game.aiManager.onMessageAdded) throw new Error('aiManager 应该有 onMessageAdded 方法');
+    if (!aiManager.onMessage) throw new Error('aiManager 应该有 onMessage 方法');
   });
 
-  it('game.aiManager 未绑定时不崩溃', () => {
+  it('AIManager 未绑定时不崩溃', () => {
     const game = createTestGame();
 
     const msg = { type: 'speech', playerId: 2, content: '测试', visibility: 'public' };
 
-    if (game.aiManager) {
-      game.aiManager.onMessageAdded(msg);
-    }
+    // aiManager 不存在时不调 onMessage
   });
 });
 
@@ -52,7 +49,7 @@ describe('事件链路', () => {
   it('message.add 触发 AI 分析', async () => {
     const game = createTestGame();
     const aiManager = new AIManager(game);
-    game.aiManager = aiManager;
+    game.getAIController = (id) => aiManager.get(id);
 
     const controller = new AIController(1, game, {
       agentType: 'mock',
@@ -60,7 +57,7 @@ describe('事件链路', () => {
     });
     aiManager.controllers.set(1, controller);
 
-    const initialLength = controller.agent.messages.length;
+    const initialLength = controller.agent.mm.messages.length;
 
     const msg = {
       id: 100,
@@ -77,7 +74,7 @@ describe('事件链路', () => {
   it('AIManager 遍历所有 AI 控制器', async () => {
     const game = createTestGame();
     const aiManager = new AIManager(game);
-    game.aiManager = aiManager;
+    game.getAIController = (id) => aiManager.get(id);
 
     const ctrl1 = new AIController(1, game, { agentType: 'mock', mockOptions: { presetAnalysis: { content: '分析' } } });
     const ctrl2 = new AIController(2, game, { agentType: 'mock', mockOptions: { presetAnalysis: { content: '分析' } } });
@@ -88,7 +85,7 @@ describe('事件链路', () => {
     aiManager.controllers.set(3, ctrl3);
 
     const msg = { type: 'speech', playerId: 4, content: '测试', visibility: 'public' };
-    aiManager.onMessageAdded(msg);
+    aiManager.onMessage(msg);
 
     await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -100,13 +97,13 @@ describe('事件链路', () => {
   it('自己发言不触发自己的分析', () => {
     const game = createTestGame();
     const aiManager = new AIManager(game);
-    game.aiManager = aiManager;
+    game.getAIController = (id) => aiManager.get(id);
 
     const ctrl1 = new AIController(1, game, { agentType: 'mock' });
     aiManager.controllers.set(1, ctrl1);
 
     const msg = { type: 'speech', playerId: 1, content: '我是 1 号', visibility: 'public' };
-    aiManager.onMessageAdded(msg);
+    aiManager.onMessage(msg);
 
     if (ctrl1.agent.requestQueue.length !== 0) throw new Error('自己发言不应该触发自己的分析');
   });
@@ -114,13 +111,13 @@ describe('事件链路', () => {
   it('私密消息不触发分析', () => {
     const game = createTestGame();
     const aiManager = new AIManager(game);
-    game.aiManager = aiManager;
+    game.getAIController = (id) => aiManager.get(id);
 
     const ctrl1 = new AIController(1, game, { agentType: 'mock' });
     aiManager.controllers.set(1, ctrl1);
 
     const msg = { type: 'action', playerId: 2, content: '查验 3 号', visibility: 'self' };
-    aiManager.onMessageAdded(msg);
+    aiManager.onMessage(msg);
 
     if (ctrl1.agent.requestQueue.length !== 0) throw new Error('私密消息不应该触发分析');
   });
@@ -128,13 +125,13 @@ describe('事件链路', () => {
   it('非分析节点消息不触发分析', () => {
     const game = createTestGame();
     const aiManager = new AIManager(game);
-    game.aiManager = aiManager;
+    game.getAIController = (id) => aiManager.get(id);
 
     const ctrl1 = new AIController(1, game, { agentType: 'mock' });
     aiManager.controllers.set(1, ctrl1);
 
     const msg = { type: 'phase_start', phase: 'day_discuss', visibility: 'public' };
-    aiManager.onMessageAdded(msg);
+    aiManager.onMessage(msg);
 
     if (ctrl1.agent.requestQueue.length !== 0) throw new Error('phase_start 不应该触发分析');
   });
@@ -142,15 +139,15 @@ describe('事件链路', () => {
   it('分析节点消息触发分析', async () => {
     const game = createTestGame();
     const aiManager = new AIManager(game);
-    game.aiManager = aiManager;
+    game.getAIController = (id) => aiManager.get(id);
 
     const ctrl1 = new AIController(1, game, { agentType: 'mock', mockOptions: { presetAnalysis: { content: '分析' } } });
     aiManager.controllers.set(1, ctrl1);
 
-    const analysisNodes = ['speech', 'vote_result', 'death_announce'];
+    const analysisNodes = ['speech'];
     for (const node of analysisNodes) {
       const msg = { type: node, playerId: 2, content: '测试', visibility: 'public' };
-      aiManager.onMessageAdded(msg);
+      aiManager.onMessage(msg);
     }
 
     await new Promise(resolve => setTimeout(resolve, 200));
@@ -162,18 +159,18 @@ describe('事件链路', () => {
 });
 
 describe('决策存储', () => {
-  it('决策存储到 agent.messages', async () => {
+  it('决策存储到 agent.mm.messages', async () => {
     const game = createTestGame();
     const controller = new AIController(1, game, {
       agentType: 'mock',
       mockOptions: { presetResponses: { action_day_discuss: '我是好人' } }
     });
 
-    const initialLength = controller.agent.messages.length;
+    const initialLength = controller.agent.mm.messages.length;
 
     await controller.getSpeechResult('public', 'action_day_discuss');
 
-    if (controller.agent.messages.length <= initialLength) {
+    if (controller.agent.mm.messages.length <= initialLength) {
       throw new Error('决策应该存储到 messages');
     }
   });
@@ -190,39 +187,8 @@ describe('决策存储', () => {
   });
 });
 
-describe('阵营消息过滤', () => {
-  it('狼人看不到好人私密消息', () => {
-    const game = createTestGame();
-    const wolfController = new AIController(1, game, { agentType: 'mock' });
-
-    const witchActionMsg = { type: 'action', playerId: 3, content: '女巫救人', visibility: 'self' };
-
-    if (wolfController.shouldAnalyzeMessage(witchActionMsg, 1)) {
-      throw new Error('狼人看不到好人私密消息');
-    }
-  });
-
-  it('camp 可见性消息需要 getCamp 验证', () => {
-    const game = createTestGame();
-    game.config = {
-      hooks: {
-        getCamp: (player) => player.role?.camp
-      }
-    };
-
-    game.players[0].role = { camp: 'wolf' };
-    game.players[1].role = { camp: 'wolf' };
-    game.players[2].role = { camp: 'good' };
-
-    const wolfController = new AIController(1, game, { agentType: 'mock' });
-
-    const wolfCampMsg = { type: 'speech', playerId: 2, content: '狼人讨论', visibility: 'camp' };
-
-    if (!wolfController.shouldAnalyzeMessage(wolfCampMsg, 1)) {
-      throw new Error('狼人阵营消息应该触发分析');
-    }
-  });
-});
+// 注：消息可见性过滤由 Server 的 MessageManager 负责，Agent 不再处理
+// 相关测试已移至 integration 测试验证端到端行为
 
 describe('多阶段流程', () => {
   it('连续决策流程', async () => {
@@ -279,24 +245,27 @@ describe('错误处理', () => {
 });
 
 describe('补充测试', () => {
-  it('分析只保存原始消息', async () => {
+  it('inject + answer 保存消息', async () => {
     const game = createTestGame();
     const controller = new AIController(1, game, {
       agentType: 'mock',
-      mockOptions: { presetAnalysis: { content: '测试分析结果' } }
+      mockOptions: { presetResponses: { action_day_discuss: '发言内容' } }
     });
 
-    const initialLength = controller.agent.messages.length;
+    const initialLength = controller.agent.mm.messages.length;
 
+    // 注入消息
     const msg = { id: 1, type: 'speech', playerId: 2, content: '测试', visibility: 'public' };
-    game.message.add(msg);
+    controller.inject(msg);
 
-    controller.enqueueMessage(msg);
-
+    // 等待队列处理
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    if (controller.agent.messages.length !== initialLength + 2) {
-      throw new Error(`分析应该保存 2 条消息（user + assistant），实际增加了 ${controller.agent.messages.length - initialLength} 条`);
+    // 决策会保存消息到 mm.messages
+    await controller.getSpeechResult('public', 'action_day_discuss');
+
+    if (controller.agent.mm.messages.length <= initialLength) {
+      throw new Error(`inject + answer 应该保存消息，实际增加了 ${controller.agent.mm.messages.length - initialLength} 条`);
     }
   });
 
@@ -347,10 +316,10 @@ describe('补充测试', () => {
   it('updateSystemMessage 更新', () => {
     const game = createTestGame();
     const controller = new AIController(1, game, { agentType: 'mock' });
-    controller.agent.messages.push({ role: 'system', content: 'old' });
-    const mockPlayer = { role: { name: 'werewolf', camp: 'wolf' }, name: '玩家 1' };
-    controller.updateSystemMessage(mockPlayer, game);
-    if (!controller.agent.messages[0].content.includes('狼人')) {
+    controller.agent.mm.messages.push({ role: 'system', content: 'old' });
+    const context = controller.buildContext({});
+    controller.agent.updateSystemMessage(context, 'game');
+    if (!controller.agent.mm.messages[0].content.includes('狼人')) {
       throw new Error('system message 未正确更新');
     }
   });

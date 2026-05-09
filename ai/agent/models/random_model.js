@@ -30,8 +30,20 @@ class RandomModel {
   }
 
   call(context) {
+    if (context.action === 'compact') {
+      return this._compactResponse(context);
+    }
+
+    // analyze 没有 tools，返回最后一条 user 消息的 content 作为分析
+    if (context.action === 'analyze') {
+      const messages = context._messagesForLLM || [];
+      const lastUserMsg = messages.slice().reverse().find(m => m.role === 'user' && m.content);
+      const analysisContent = lastUserMsg?.content || ANALYSIS_TEMPLATES[Math.floor(Math.random() * ANALYSIS_TEMPLATES.length)];
+      return { raw: { content: analysisContent }, messages };
+    }
+
     if (!context._tools || context._tools.length === 0) {
-      return ANALYSIS_TEMPLATES[Math.floor(Math.random() * ANALYSIS_TEMPLATES.length)];
+      return { raw: { content: ANALYSIS_TEMPLATES[Math.floor(Math.random() * ANALYSIS_TEMPLATES.length)] }, messages: context._messagesForLLM || [] };
     }
 
     this.logContext(context);
@@ -271,6 +283,16 @@ class RandomModel {
     if (global.DEBUG_MODE && context._messagesForLLM?.length > 0) {
       getLogger().debug(`[RandomModel] LLM消息: ${JSON.stringify(context._messagesForLLM, null, 2)}`);
     }
+  }
+
+  _compactResponse(context) {
+    const messages = context._messagesForLLM || [];
+    const nonSystemContent = messages
+      .filter(m => m.role !== 'system')
+      .map(m => m.content || '')
+      .filter(c => c)
+      .join('\n');
+    return { raw: { content: `[[${nonSystemContent}]]` }, messages };
   }
 }
 

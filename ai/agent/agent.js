@@ -1,14 +1,12 @@
-const { getCurrentTask, buildCurrentTurn, isSpeech } = require('./prompt');
-const { VISIBILITY, CAMP } = require('../../engine/constants');
+const { isSpeech } = require('./prompt');
 const { getToolsForAction, getTool } = require('./tools');
-const { buildToolResultMessage, formatChatMessages, buildGameOverInfo } = require('./formatter');
+const { buildToolResultMessage, formatMessageToText } = require('./formatter');
 const { LLMModel } = require('./models/llm_model');
 const { RandomModel } = require('./models/random_model');
 const { MockModel } = require('./models/mock_model');
 const { MessageManager, TOKEN_THRESHOLD } = require('./message_manager');
 const { createLogger } = require('../../utils/logger');
-
-const ANALYSIS_NODES = ['speech'];
+const { MSG, PHASE, ACTION } = require('../../engine/constants');
 
 let backendLogger = null;
 const getLogger = () => backendLogger || (backendLogger = createLogger('backend.log'));
@@ -30,6 +28,7 @@ class Agent {
   constructor(options = {}) {
     this.requestQueue = [];
     this.isProcessing = false;
+    this.initContext = options.initContext || null;
 
     this.mm = new MessageManager({
       compressionEnabled: options.compressionEnabled !== false
@@ -45,77 +44,224 @@ class Agent {
       { model: this.randomModel, name: 'RandomModel' }
     ];
 
-    this.lastChatMessageId = 0;
+    // 初始化 system 消息（chat 模式），确保后续 compact 有 system 消息
+    if (this.initContext) {
+      this.updateSystemMessage(this.initContext, 'chat');
+    }
   }
 
-  get messages() {
-    return this.mm.messages;
-  }
+  // ==================== 系统消息 ====================
 
-  updateSystemMessage(player, game, mode = 'game') {
+  /**
+   * 更新系统消息（签名调整：从 (player, game, mode) 改为 (context, mode)）
+   */
+  updateSystemMessage(context, mode = 'game') {
+    const player = context.self;
+    const game = {
+      players: context.players,
+      round: context.dayCount,
+      presetId: context.presetId,
+      preset: context.preset,
+      werewolfTarget: context.werewolfTarget
+    };
     this.mm.updateSystem(player, game, mode);
-  }
-
-  async enterGame(player, game, chatMessages, currentChatId) {
-    this._drainQueue();
-    const lastId = this.lastChatMessageId || 0;
-    const deltaMessages = chatMessages.filter(m => m.id > lastId);
-    if (deltaMessages.length > 0) {
-      const delta = formatChatMessages(deltaMessages);
-      this.mm.appendContent(delta);
-    }
-    this.lastChatMessageId = currentChatId;
-    const context = { self: player, players: game.players || [] };
-    await new Promise(resolve => {
-      this.enqueue({ type: 'compress', mode: 'chat', context, callback: resolve });
-    });
-    this.mm.resetWatermark();
-  }
-
-  exitGame(player) {
-    this._drainQueue();
-    this.mm.updateSystem(player, null, 'chat');
-  }
-
-  async postGameCompress(player, game) {
-    const context = { self: player, players: game?.players || [] };
-    await new Promise(resolve => {
-      this.enqueue({ type: 'compress', mode: 'game', context, callback: resolve });
-    });
-  }
-
-  async resetForNewGame(player, game) {
-    this._drainQueue();
-    const context = { self: player, players: game.players || [] };
-    await new Promise(resolve => {
-      this.enqueue({ type: 'compress', mode: 'game', context, callback: resolve });
-    });
-    this.mm.updateSystem(player, game, 'game');
-    this.mm.resetWatermark();
-  }
-
-  appendContent(content) {
-    this.mm.appendContent(content);
-  }
-
-  appendGameOverInfo(player, game) {
-    const info = buildGameOverInfo(game);
-    if (info) {
-      this.mm.appendContent(info);
-    }
-  }
-
-  get lastProcessedId() {
-    return this.mm.lastProcessedId;
   }
 
   destroy() {
     this._drainQueue();
-    this.mm.messages = [];
+    this.mm.destroy();
   }
 
-  enqueue(request) {
-    this.requestQueue.push(request);
+  // ==================== 统一入口 ====================
+
+  /**
+   * 统一入口：接收所有外界输入
+   * @param {Object} options
+   * @param {Object|null} options.msg - 普通消息时为 {type, playerId, content}，决策请求时为 null
+   * @param {Object} options.context - buildContext 标准输出
+   * @returns {Promise<result|null>} - 决策场景返回 Promise，普通消息返回 null
+   */
+  async receive({ msg, context }) {
+    const { promise, items } = this.derive({ msg, context });
+
+    // 严格按顺序入队
+    for (const item of items) {
+      this.enqueue(item);
+    }
+
+    return promise;
+  }
+
+  /**
+   * 消息派生：解析消息并派生队列项
+   */
+  derive({ msg, context }) {
+    // 决策请求
+    if (msg === null) {
+      let resolve;
+      const promise = new Promise((r) => { resolve = r; });
+      // day_vote 决策后需要压缩
+      const needCompact = context.action === ACTION.DAY_VOTE;
+      return {
+        promise,
+        items: needCompact
+          ? [
+              { type: 'decision', context, resolve },
+              { type: 'compact', mode: 'game' }
+            ]
+          : [{ type: 'decision', context, resolve }]
+      };
+    }
+
+    switch (msg.type) {
+      case MSG.GAME_START:
+        // 丢弃上状态的 decision 和 compact（赛前未完成的行动和压缩）
+        this._drainDecisionsAndCompacts();
+        return {
+          promise: null,
+          items: [
+            // 1. 先压缩聊天室历史（此时有 chat 模式的 system 消息）
+            { type: 'compact', mode: 'pre_game' },
+            // 2. 切换到 game 模式的 system 消息
+            { type: 'mode_change', mode: 'game', context },
+            // 3. 注入 GAME_START 消息
+            { type: 'message', msg, context }
+          ]
+        };
+
+      case MSG.GAME_OVER:
+        // 丢弃上状态的 decision 和 compact（游戏内未完成的行动和压缩）
+        this._drainDecisionsAndCompacts();
+        return {
+          promise: null,
+          items: [
+            // 1. 注入 GAME_OVER 消息
+            { type: 'message', msg, context },
+            // 2. 执行赛后 chat 决策（AI 复盘发言）
+            {
+              type: 'decision',
+              context: { ...context, action: ACTION.CHAT, extraData: { ...context.extraData, chatContext: { event: 'game_over' } } },
+              callback: context.extraData?.callback
+            },
+            // 3. 用 game 视角压缩游戏历史（此时 system 消息还是 game 模式）
+            { type: 'compact', mode: 'game_over' },
+            // 4. 切换到 chat 模式的 system 消息
+            { type: 'mode_change', mode: 'chat', context }
+          ]
+        };
+
+      case MSG.SPEECH:
+        // 自己发的、自己已死亡、游戏已结束：不分析
+        if ((msg.playerId === context.self.id && msg.playerName === context.self.name) || !context.self.alive || context.winner) {
+          return { promise: null, items: [] };
+        }
+        // 只分析白天公开发言（警长竞选、白天讨论）
+        const isDaySpeech = context.phase === PHASE.SHERIFF_SPEECH || context.phase === PHASE.DAY_DISCUSS;
+        if (!isDaySpeech) {
+          return { promise: null, items: [{ type: 'message', msg, context }] };
+        }
+        return {
+          promise: null,
+          items: [
+            { type: 'message', msg, context },
+            { type: 'decision', context: { ...context, action: 'analyze' }, resolve: null }
+          ]
+        };
+
+      case MSG.CHAT:
+        // 使用 playerId + playerName 双重校验
+        if (msg.playerId === context.self.id && msg.playerName === context.self.name) {
+          return { promise: null, items: [] };
+        }
+        // 被@且游戏未在进行中（等待中或赛后）才回复
+        if (this._isMentioned(msg, context) && !context.phaseManagerRunning) {
+          return {
+            promise: null,
+            items: [
+              { type: 'message', msg, context },
+              {
+                type: 'decision',
+                context: { ...context, action: ACTION.CHAT, extraData: { ...context.extraData, chatContext: { event: 'mentioned', mentioner: msg.playerName, mentionContent: msg.content } } },
+                callback: context.extraData?.callback
+              }
+            ]
+          };
+        }
+        return {
+          promise: null,
+          items: [{ type: 'message', msg, context }]
+        };
+
+      default:
+        return {
+          promise: null,
+          items: [{ type: 'message', msg, context }]
+        };
+    }
+  }
+
+  /**
+   * 丢弃队列中的 decision 和 compact，并 resolve 所有被丢弃的 decision
+   */
+  _drainDecisionsAndCompacts() {
+    const drained = this.requestQueue.filter(
+      item => item.type === 'decision' || item.type === 'compact'
+    );
+    for (const item of drained) {
+      if (item.type === 'decision' && item.resolve) {
+        item.resolve(null);  // resolve null 表示被丢弃，调用方视为弃权
+      }
+    }
+    this.requestQueue = this.requestQueue.filter(
+      item => item.type !== 'decision' && item.type !== 'compact'
+    );
+  }
+
+  /**
+   * @检测
+   */
+  _isMentioned(msg, context) {
+    const content = msg.content;
+    const myName = context?.self?.name;
+    if (!content || !myName) return false;
+
+    let pos = 0;
+    while ((pos = content.indexOf('@', pos)) !== -1) {
+      const textAfterAt = content.slice(pos + 1);
+      if (textAfterAt.length === 0) { pos++; continue; }
+
+      if (!textAfterAt.startsWith(myName)) { pos++; continue; }
+
+      // 检查是否有更长匹配（优先匹配更长的名字）
+      const hasLongerMatch = false;  // 简化处理，由外部 context 提供玩家列表
+      if (!hasLongerMatch) return true;
+      pos++;
+    }
+    return false;
+  }
+
+  /**
+   * 检查是否应该压缩（阈值判断）
+   */
+  _shouldCompact() {
+    if (this.mm._currentMode === 'game') return false;
+    const messages = this.mm.messages;
+    const pendingText = this.mm.pendingInject.join('');
+    const totalTokens = estimateTokens(messages) + Math.ceil(pendingText.length / 4);
+    return totalTokens > TOKEN_THRESHOLD;
+  }
+
+  /**
+   * 获取当前可用的模型（优先级：Mock > LLM > Random）
+   */
+  _getModel() {
+    return this.mockModel || this.llmModel || this.randomModel;
+  }
+
+  // ==================== 队列管理 ====================
+
+  enqueue(item) {
+    this.requestQueue.push(item);
     this.processQueue();
   }
 
@@ -124,47 +270,78 @@ class Agent {
     this.isProcessing = true;
     try {
       while (this.requestQueue.length > 0) {
-        const { type, mode, context, callback } = this.requestQueue.shift();
-        if (type === 'compress') {
-          await this.mm.compress(this.llmModel, mode, context);
-          callback?.();
-        } else {
-          const result = await this.answer(context);
-          callback?.(result);
-        }
+        const item = this.requestQueue.shift();
+        await this.consume(item);  // 串行处理
       }
     } finally {
       this.isProcessing = false;
     }
   }
 
-  async answer(context) {
-    if (this.shouldCompress()) {
-      const mode = this.mm._currentMode === 'chat' ? 'chat' : 'game';
-      await new Promise(resolve => {
-        this.enqueue({ type: 'compress', mode, context, callback: resolve });
-      });
+  async consume(item) {
+    switch (item.type) {
+      case 'message':
+        // 只加入 pending，不 flush，不 compact
+        // 聊天室消息使用 formatMessageToText 格式化
+        const formattedContent = item.msg.type === MSG.CHAT
+          ? formatMessageToText(item.msg, item.context?.self?.id)
+          : item.msg.content;
+        if (formattedContent) {
+          this.mm.inject(formattedContent);
+        }
+        break;
+
+      case 'decision':
+        // 如果是 chat 模式且没有 system 消息，先初始化
+        if (item.context?.action === ACTION.CHAT && this.mm._currentMode === 'chat') {
+          if (this.mm.messages.length === 0 || this.mm.messages[0]?.role !== 'system') {
+            this.updateSystemMessage(item.context, 'chat');
+          }
+        }
+        this.mm.flush();
+        const result = await this.answer(item.context);
+        getLogger().info(`[Agent.consume] decision 完成，action=${item.context?.action}, result=${result ? JSON.stringify(result) : 'null'}, callback=${item.callback ? '有' : '无'}`);
+        if (item.resolve) item.resolve(result);
+        if (item.callback) item.callback(result);
+        // chat 模式回复后，立刻进行压缩阈值判断，超限直接压缩
+        if (item.context?.action === ACTION.CHAT && this.mm._currentMode === 'chat') {
+          if (this._shouldCompact()) {
+            await this.mm.compact(this._getModel(), 'chat');
+          }
+        }
+        break;
+
+      case 'compact':
+        await this.mm.compact(this._getModel(), item.mode || this.mm._currentMode);
+        break;
+
+      case 'mode_change':
+        this.updateSystemMessage(item.context, item.mode);
+        break;
     }
+  }
 
-    const { newContent, newMessages } = this.mm.formatIncomingMessages(context);
-
+  async answer(context) {
     const expectedAction = context.action === 'analyze' ? 'content' : (getTool(context.action) || 'content');
     const isDecision = expectedAction !== 'content';
 
-    const profile = isDecision ? { thinking: context.self?.thinking, speaking: context.self?.speaking } : null;
-    const { full, history } = buildCurrentTurn(newContent, context.action, context, profile);
-    const llmView = this.mm.buildLLMView(full);
+    // 一步完成：生成提示词 + 构建 LLMView + 持久化
+    const { llmView, persisted } = this.mm.prepareLLMView(
+      context.action,
+      context,
+      context.self
+    );
 
     const tools = isDecision ? getToolsForAction(context.action, context) : [];
 
     const playerName = context.self?.name || 'unknown';
-    getLogger().debug(`[Agent] ${playerName} ${isDecision ? '决策' : '分析'} messages count: ${llmView.length}, newMessages: ${newMessages.length}`);
+    getLogger().debug(`[Agent] ${playerName} ${isDecision ? '决策' : '分析'} messages count: ${llmView.length}, action=${context.action}, expectedAction=${typeof expectedAction === 'string' ? expectedAction : expectedAction?.name}`);
 
     for (const { model, name } of this._models) {
       if (!model?.isAvailable()) continue;
 
       try {
-        const result = await this._agentLoop(model, context, expectedAction, newContent, newMessages, llmView, tools, history);
+        const result = await this._agentLoop(model, context, expectedAction, llmView, tools);
         if (result !== null) {
           return result;
         }
@@ -176,12 +353,7 @@ class Agent {
     return isDecision ? { type: 'skip' } : '';
   }
 
-  shouldCompress() {
-    const tokenCount = estimateTokens(this.mm.messages);
-    return tokenCount > TOKEN_THRESHOLD;
-  }
-
-  async _agentLoop(model, context, expectedAction, newContent, newMessages, llmView, tools, history) {
+  async _agentLoop(model, context, expectedAction, llmView, tools) {
     const maxIterations = 5;
     let iteration = 0;
     let lastAssistantContent = null;
@@ -231,14 +403,14 @@ class Agent {
           if (expectedAction !== 'content' && toolCall.function.name === expectedAction.name) {
             if (execResult.success) {
               const action = execResult.skip ? { skip: true } : execResult.action;
-              this.mm.appendTurn([
-                { role: 'user', content: history },
+              this.mm.messages.push(
                 { role: 'assistant', content: raw?.content || null, tool_calls: [toolCall] },
                 { role: 'tool', tool_call_id: toolCall.id, content: toolResultContent }
-              ], newMessages);
-              getLogger().info(`[Agent] ${context.self?.name || 'unknown'} 决策完成：${context.phase}`);
+              );
+              getLogger().info(`[Agent] ${context.self?.name || 'unknown'} 决策完成：${context.phase}, action=${JSON.stringify(action)}`);
               return action;
             }
+            getLogger().warn(`[Agent] ${context.self?.name || 'unknown'} tool 执行失败：${execResult.error}, execResult=${JSON.stringify(execResult)}`);
             lastAssistantContent = raw?.content || null;
             lastToolCalls = [toolCall];
             lastToolResult = { tool_call_id: toolCall.id, content: toolResultContent };
@@ -250,9 +422,7 @@ class Agent {
       }
 
       if (expectedAction === 'content') {
-        const userMsg = { role: 'user', content: history };
-        const assistantMsg = { role: 'assistant', content: content || '' };
-        this.mm.appendTurn([userMsg, assistantMsg], newMessages);
+        this.mm.messages.push({ role: 'assistant', content: content || '' });
         getLogger().info(`[Agent] ${context.self?.name || 'unknown'} 完成，分析内容长度: ${content?.length || 0}`);
         if (!content) {
           getLogger().warn(`[Agent] ${context.self?.name || 'unknown'} 分析返回空内容，原始raw: ${JSON.stringify(raw)}`);
@@ -265,49 +435,29 @@ class Agent {
       llmView.push({ role: 'user', content: '请使用工具来执行操作。' });
     }
 
-    this._saveFailedHistory(history, lastAssistantContent, lastToolCalls, lastToolResult, newMessages);
+    this._saveFailedHistory(lastAssistantContent, lastToolCalls, lastToolResult);
     getLogger().error(`[Agent] ${context.self?.name || 'unknown'} agent loop 超过最大迭代次数`);
     return null;
   }
 
-  _saveFailedHistory(history, assistantContent, toolCalls, toolResult, newMessages) {
-    const msgs = [{ role: 'user', content: history }];
+  _saveFailedHistory(assistantContent, toolCalls, toolResult) {
     if (toolCalls && toolCalls.length > 0) {
-      msgs.push({ role: 'assistant', content: assistantContent, tool_calls: toolCalls });
-      if (toolResult) msgs.push(toolResult);
+      this.mm.messages.push(
+        { role: 'assistant', content: assistantContent, tool_calls: toolCalls }
+      );
+      if (toolResult) this.mm.messages.push(toolResult);
     } else if (assistantContent !== null) {
-      msgs.push({ role: 'assistant', content: assistantContent });
+      this.mm.messages.push({ role: 'assistant', content: assistantContent });
     }
-    this.mm.appendTurn(msgs, newMessages);
-  }
-
-  shouldAnalyzeMessage(msg, selfPlayerId, game) {
-    if (!ANALYSIS_NODES.includes(msg.type) || msg.playerId === selfPlayerId || msg.visibility === VISIBILITY.SELF) return false;
-
-    const selfPlayer = game?.players?.find(p => p.id === selfPlayerId);
-    if (selfPlayer && selfPlayer.alive === false) return false;
-    if (game?.winner) return false;
-
-    if (msg.visibility === VISIBILITY.CAMP) {
-      const sender = game?.players?.find(p => p.id === msg.playerId);
-      const getCamp = game?.config?.hooks?.getCamp;
-      if (!selfPlayer || !sender || getCamp?.(selfPlayer, game) !== getCamp?.(sender, game)) return false;
-    }
-
-    if ((msg.visibility === VISIBILITY.COUPLE || msg.visibility === VISIBILITY.COUPLE_IDENTITY) && !game?.couples?.includes(selfPlayerId)) {
-      return false;
-    }
-
-    return true;
   }
 
   _drainQueue() {
-    for (const { callback } of this.requestQueue) {
-      callback?.(null);
+    for (const item of this.requestQueue) {
+      if (item.callback) item.callback(null);
     }
     this.requestQueue = [];
     this.isProcessing = false;
   }
 }
 
-module.exports = { Agent, ANALYSIS_NODES, TOKEN_THRESHOLD };
+module.exports = { Agent, TOKEN_THRESHOLD };

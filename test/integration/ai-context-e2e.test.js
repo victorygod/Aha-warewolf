@@ -93,10 +93,11 @@ describe('AI上下文E2E - system prompt', () => {
     if (!systemMsg.content.includes('预言家')) throw new Error('system prompt应包含预言家角色名');
     if (/队友[:：]/.test(systemMsg.content)) throw new Error('预言家system prompt不应包含队友信息（队友:xxx格式）');
 
-    const userMsg = messages.find(m => m.role === 'user');
-    if (!userMsg) throw new Error('无user消息');
-    if (!userMsg.content.includes('【预言家】')) throw new Error('user message应包含【预言家】阶段标记');
-    if (!userMsg.content.includes('可选玩家')) throw new Error('user message应包含可选玩家列表');
+    const userMsgs = messages.filter(m => m.role === 'user');
+    if (userMsgs.length === 0) throw new Error('无user消息');
+    const lastUserMsg = userMsgs[userMsgs.length - 1];
+    if (!lastUserMsg.content.includes('【预言家】')) throw new Error('user message应包含【预言家】阶段标记');
+    if (!lastUserMsg.content.includes('可选玩家')) throw new Error('user message应包含可选玩家列表');
   }, 10000);
 
   it('E3b: 预言家查验结果消息格式正确', async () => {
@@ -160,13 +161,16 @@ describe('AI上下文E2E - system prompt', () => {
     if (!systemMsg) throw new Error('无system消息');
     if (!systemMsg.content.includes('女巫')) throw new Error('system prompt应包含女巫角色名');
 
-    const userMsg = messages.find(m => m.role === 'user');
-    if (!userMsg) throw new Error('无user消息');
-    if (!userMsg.content.includes('【女巫】')) throw new Error('user message应包含【女巫】阶段标记');
-    if (!userMsg.content.includes('被狼人杀害')) throw new Error('user message应包含被狼人杀害信息');
+    const userMsgs = messages.filter(m => m.role === 'user');
+    if (userMsgs.length === 0) throw new Error('无user消息');
+    const lastUserMsg = userMsgs[userMsgs.length - 1];
+    if (!lastUserMsg.content.includes('【女巫】')) throw new Error('user message应包含【女巫】阶段标记');
 
-    const hasHealInfo = userMsg.content.includes('解药');
-    const hasPoisonInfo = userMsg.content.includes('毒药');
+    const allUserContent = userMsgs.map(m => m.content).join('\n');
+    if (!allUserContent.includes('被狼人杀害')) throw new Error('user message应包含被狼人杀害信息');
+
+    const hasHealInfo = lastUserMsg.content.includes('解药');
+    const hasPoisonInfo = lastUserMsg.content.includes('毒药');
     if (!hasHealInfo || !hasPoisonInfo) throw new Error('user message应包含解药和毒药状态');
   }, 10000);
 
@@ -198,11 +202,14 @@ describe('AI上下文E2E - system prompt', () => {
     if (!systemMsg.content.includes('狼人')) throw new Error('system prompt应包含狼人角色名');
     if (!systemMsg.content.includes('队友')) throw new Error('狼人system prompt应包含队友信息');
 
-    const userMsg = messages.find(m => m.role === 'user');
-    if (!userMsg) throw new Error('无user消息');
-    const hasWolfMarker = userMsg.content.includes('【狼人讨论】') || userMsg.content.includes('【狼人投票】');
+    const userMsgs = messages.filter(m => m.role === 'user');
+    if (userMsgs.length === 0) throw new Error('无user消息');
+    const lastUserMsg = userMsgs[userMsgs.length - 1];
+    const hasWolfMarker = lastUserMsg.content.includes('【狼人讨论】') || lastUserMsg.content.includes('【狼人投票】');
     if (!hasWolfMarker) throw new Error('user message应包含【狼人讨论】或【狼人投票】阶段标记');
-    if (!userMsg.content.includes('第1夜')) throw new Error('历史记录应包含第1夜标记');
+
+    const allUserContent = userMsgs.map(m => m.content).join('\n');
+    if (!allUserContent.includes('第1夜')) throw new Error('历史记录应包含第1夜标记');
   }, 10000);
 
   it('E5b: 狼人可以看到队友的发言', async () => {
@@ -262,10 +269,9 @@ describe('AI上下文E2E - system prompt', () => {
         const history = server.getAICallHistory(p.id);
         const found = history.find(c => {
           if (!c.messagesForLLM) return false;
-          const userMsg = c.messagesForLLM.find(m => m.role === 'user');
-          if (!userMsg) return false;
-          return userMsg.content.includes('【白天发言】') ||
-                 userMsg.content.includes('【白天投票】');
+          const allUserContent = c.messagesForLLM.filter(m => m.role === 'user').map(m => m.content).join('\n');
+          return allUserContent.includes('【白天发言】') ||
+                 allUserContent.includes('【白天投票】');
         });
         if (found) { dayCall = found; return true; }
       }
@@ -280,20 +286,20 @@ describe('AI上下文E2E - system prompt', () => {
     const systemMsg = messages.find(m => m.role === 'system');
     if (!systemMsg) throw new Error('无system消息');
 
-    const userMsg = messages.find(m => m.role === 'user');
-    if (!userMsg) throw new Error('无user消息');
+    const userMsgs = messages.filter(m => m.role === 'user');
+    if (userMsgs.length === 0) throw new Error('无user消息');
+    const lastUserMsg = userMsgs[userMsgs.length - 1];
 
     const dayMarkers = ['【白天发言】', '【白天投票】', '【警长竞选】', '【警长投票】'];
-    const hasDayMarker = dayMarkers.some(m => userMsg.content.includes(m));
+    const hasDayMarker = dayMarkers.some(m => lastUserMsg.content.includes(m));
     if (!hasDayMarker) throw new Error(`user message应包含白天阶段标记之一: ${dayMarkers.join(', ')}`);
 
-    const hasRoundMarker = userMsg.content.includes('第1天') || userMsg.content.includes('第1夜');
+    const allUserContent = userMsgs.map(m => m.content).join('\n');
+    const hasRoundMarker = allUserContent.includes('第1天') || allUserContent.includes('第1夜');
     if (!hasRoundMarker) throw new Error('历史记录应包含第1天或第1夜标记');
 
-    // 发言格式现在是 [发言|x号名字] 内容
-    const hasNewFormat = /\[发言\|\d+号[^\]]+\]/.test(userMsg.content);
-    // 旧格式 x号名字:内容 也可能存在
-    const hasOldFormat = /\d+号[^:]+:/.test(userMsg.content);
+    const hasNewFormat = /\[发言\|\d+号[^\]]+\]/.test(allUserContent);
+    const hasOldFormat = /\d+号[^:]+:/.test(allUserContent);
     if (!hasNewFormat && !hasOldFormat) throw new Error('应包含发言格式 "[发言|x号名字]" 或 "x号名字:"');
   }, 8000);
 });

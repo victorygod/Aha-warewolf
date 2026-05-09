@@ -434,6 +434,12 @@ class PhaseManager {
   async start() {
     this.running = true;
 
+    this.game.message.add({
+      type: MSG.GAME_START,
+      content: buildMessage('GAME_START'),
+      visibility: VISIBILITY.PUBLIC
+    });
+
     // 外层循环：轮次
     while (this.running) {
       getLogger().info(`========== 第 ${this.game.round} 轮 ==========`);

@@ -13,6 +13,7 @@ class LLMModel {
     this.baseUrl = options.baseUrl || process.env.BASE_URL;
     this.authToken = options.authToken || process.env.AUTH_TOKEN;
     this.model = options.model || process.env.MODEL;
+    this.extraBodyParams = options.extraBodyParams || (process.env.EXTRA_BODY_PARAMS ? JSON.parse(process.env.EXTRA_BODY_PARAMS) : {});
   }
 
   isAvailable() {
@@ -23,16 +24,16 @@ class LLMModel {
     // 兼容直接传messages数组的情况（如message_manager.js的调用）
     if (Array.isArray(context)) {
       const messages = context;
-      const response = await this._callAPI(messages, { enableThinking: false });
+      const response = await this._callAPI(messages);
       return response;
     }
 
     this.logContext(context);
 
-    // 无 tool 时：直接对话（分析阶段禁用思考模式，避免返回空内容）
+    // 无 tool 时：直接对话
     if (!context._tools || context._tools.length === 0) {
       const messages = context._messagesForLLM || [];
-      const response = await this._callAPI(messages, { enableThinking: false });
+      const response = await this._callAPI(messages);
       const message = response.choices?.[0]?.message;
       // DEBUG: 记录API响应
       if (global.DEBUG_MODE) {
@@ -69,7 +70,7 @@ class LLMModel {
     const body = {
       model: this.model,
       messages,
-      enable_thinking: options.enableThinking !== false
+      ...this.extraBodyParams
     };
 
     if (options.tools) {

@@ -31,14 +31,15 @@ function createStandardCheckWin() {
     // 已翻牌白痴不计入任何阵营
     const isRevealedIdiot = (p) => p.role.id === 'idiot' && p.state?.revealed;
 
-    // 狼人胜利：屠边（神职全灭或村民全灭），已翻牌白痴不算神职
     const gods = game.players.filter(p => p.alive && !isRevealedIdiot(p) && p.role?.type === ROLE_TYPE.GOD);
     const villagers = game.players.filter(p => p.alive && p.role?.type === ROLE_TYPE.VILLAGER);
-    if (gods.length === 0 || villagers.length === 0) return CAMP.WOLF;
-
-    // 好人胜利：狼人全灭
     const wolves = game.players.filter(p => p.alive && p.role?.camp === CAMP.WOLF);
+
+    // 好人胜利：狼人全灭（优先判断，避免狼人全灭同时屠边时误判狼人胜）
     if (wolves.length === 0) return CAMP.GOOD;
+
+    // 狼人胜利：屠边（神职全灭或村民全灭），已翻牌白痴不算神职
+    if (gods.length === 0 || villagers.length === 0) return CAMP.WOLF;
 
     return null;
   };

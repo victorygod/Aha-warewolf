@@ -3,3 +3,13 @@
   "auth_token": "your-api-key-here",
   "model": "your-model-name"
 }
+//
+// 可选参数说明：
+// 除 base_url / auth_token / model 外，其余字段会原样放入请求 body，按需添加。
+//
+// GLM-5.1 示例：
+//   "enable_thinking": true
+//
+// DeepSeek-V4 示例：
+//   "thinking": { "type": "enabled" },
+//   "reasoning_effort": "high"

@@ -8,7 +8,7 @@ const path = require('path');
 
 const { CAMP, ACTION } = require('../../engine/constants');
 
-const SYSTEM_MESSAGE_SUFFIX = '不重复别人说的话，说你独特的见解。提到他人时务必采用名字，若你认识对方可根据对方性格做判断或调侃。使用中文说话';
+const SYSTEM_MESSAGE_SUFFIX = '不重复别人说的话，说你独特的见解。提到他人时务必采用名字，若你认识对方可根据对方性格做判断或调侃。';
 
 
 // 分析提示词（用于 AI 分析他人发言，不保留在历史中）
@@ -54,8 +54,8 @@ function _buildGameContext(player, game) {
   const rulesText = ruleDescs.length > 0 ? '规则:' + ruleDescs.join('|') : '';
 
   const presetId = game.presetId || game.preset?.name?.replace('人', '-') || '';
-  const strategyGuide = loadStrategyGuide(presetId, roleId);
-  const strategySection = strategyGuide ? `\n\n【角色攻略】\n${strategyGuide}\n` : '';
+  const strategySection = loadStrategyGuide(presetId, roleId);
+  // const strategySection = strategyGuide ? `\n\n【角色攻略】\n${strategyGuide}\n` : '';
 
   const playersList = (game.players || []).map((p, i) => {
     const suffix = p.id === player.id ? '（你）' : '';
@@ -88,7 +88,7 @@ ${SYSTEM_MESSAGE_SUFFIX}`;
 // 阶段提示词（无 JSON 格式要求，候选列表保留文本方便 LLM 理解）
 const CURRENT_TASK = {
   analyze: () => '请分析本条发言，其可能在欺骗，也可能说漏嘴，寻找其中视野面或逻辑上的漏洞，结合局势做出分析判断。你的分析内容不会被其他人听到，不超过 100 字。',
-  [ACTION.NIGHT_WEREWOLF_DISCUSS]: () => '【狼人讨论】轮到你发言了，请调用 action_night_werewolf_discuss 工具与同伴讨论今晚的目标，100字以内。',
+  [ACTION.NIGHT_WEREWOLF_DISCUSS]: () => '【狼人讨论】轮到你发言了，请调用 action_night_werewolf_discuss 工具与同伴讨论今晚的目标，50字以内。',
   [ACTION.NIGHT_WEREWOLF_VOTE]: (aliveList) => `【狼人投票】可选玩家：\n${aliveList}\n请调用 action_night_werewolf_vote 工具选择今晚要击杀的玩家，或弃权。`,
   [ACTION.SEER]: (aliveList) => `【预言家】可选玩家：\n${aliveList}\n请调用 action_seer 工具选择要查验的玩家。`,
   [ACTION.GUARD]: (aliveList) => `【守卫】可选玩家：\n${aliveList}\n请调用 action_guard 工具选择要守护的玩家。`,
@@ -171,7 +171,7 @@ const CURRENT_TASK = {
       const mentionContent = chatContext.mentionContent || '';
       const recentChat = chatContext.recentChat || '';
       const chatSection = recentChat ? `\n\n最近聊天：\n${recentChat}` : '';
-      return `【有人@你】${mentioner} 提到了你：${chatSection}\n如果你想回应，请调用 action_chat 工具发言，不超过200字，支持 @名字。不想回应可以跳过。`;
+      return `【有人@你】${mentioner} 提到了你${chatSection}\n如果你想回应，请调用 action_chat 工具发言，不超过200字，支持 @名字。不想回应可以跳过。`;
     }
     return '【聊天室】你可以在聊天室自由发言，打招呼、讨论角色偏好、闲聊都行。请调用 action_chat 工具发言，不超过200字，支持 @名字(不要带位置号)。不想说话可以跳过。';
   }
@@ -192,16 +192,6 @@ function getCurrentTask(action, context) {
 
 function isSpeech(action) {
   return [ACTION.DAY_DISCUSS, ACTION.LAST_WORDS, ACTION.SHERIFF_SPEECH, ACTION.NIGHT_WEREWOLF_DISCUSS, ACTION.CHAT].includes(action);
-}
-
-function buildCurrentTurn(newContent, action, context, profile) {
-  const task = getCurrentTask(action, context);
-  const fullParts = [newContent];
-  if (profile?.thinking) fullParts.push(`【行为逻辑】\n${profile.thinking}`);
-  if (isSpeech(action) && profile?.speaking) fullParts.push(`【说话方式】\n${profile.speaking}`);
-  fullParts.push(task);
-  const historyParts = [newContent, task];
-  return { full: fullParts.join('\n\n'), history: historyParts.join('\n\n') };
 }
 
 // AI 人物设定
@@ -252,6 +242,13 @@ const CREATIVE_NAMES = [
 ];
 
 // 从 ai/profiles/ 目录加载（兼容旧路径）
+const COMPACT_TEMPLATES = {
+  pre_game: '游戏即将开始，请将总结为300字以内的摘要。',
+  game: '请总结游戏进展为300字以内的摘要，保留：\n1. 存活人数和阵营分布\n2. 已暴露的关键信息（身份、查验、守护等）\n3. 可疑玩家和推理线索\n4. 局势走向',
+  game_over: '游戏结束了，请总结为300字以内的摘要。',
+  chat: '请将聊天内容总结为300字以内的摘要。'
+};
+
 const AI_PROFILES = loadProfilesFromDir(path.join(__dirname, '..', 'profiles'));
 
 let usedNames = new Set();
@@ -287,12 +284,12 @@ function getRandomProfiles(count) {
 module.exports = {
   buildSystemPrompt,
   getCurrentTask,
-  buildCurrentTurn,
   isSpeech,
   getRandomProfiles,
   resetUsedNames,
   releaseAIName,
   ROLE_NAMES,
   DEFAULT_THINKING,
-  CREATIVE_NAMES
+  CREATIVE_NAMES,
+  COMPACT_TEMPLATES
 };

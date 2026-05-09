@@ -92,6 +92,80 @@ class GameEngine extends EventEmitter {
     this._playerCount = val;
   }
 
+  changePreset(presetId) {
+    if (!BOARD_PRESETS[presetId]) return;
+    if (this.phaseManager?.running) return;
+    this.presetId = presetId;
+    this.preset = BOARD_PRESETS[presetId];
+    this.effectiveRules = getEffectiveRules(this.preset);
+    this._playerCount = null;
+  }
+
+  removePlayer(playerId) {
+    this.players = this.players.filter(p => p.id !== playerId);
+  }
+
+  addPlayer(data) {
+    const id = this.players.length === 0 ? 1 : Math.max(...this.players.map(p => p.id)) + 1;
+    const player = {
+      id,
+      name: data.name,
+      emoji: data.emoji || '🎭',
+      alive: true,
+      isAI: data.isAI || false,
+      ready: data.isAI ? true : false,
+      role: null,
+      state: {},
+      ...data
+    };
+    delete player.presetId;
+    this.players.push(player);
+    return id;
+  }
+
+  reset({ keepPlayers = false } = {}) {
+    if (this.phaseManager) {
+      this.phaseManager.running = false;
+      this.phaseManager = null;
+    }
+
+    this.cancelAllPendingRequests();
+
+    this.winner = null;
+    this.gameOverInfo = null;
+    this.round = 1;
+    this.sheriff = null;
+    this.couples = null;
+    this.werewolfTarget = null;
+    this.guardTarget = null;
+    this.healTarget = null;
+    this.poisonTarget = null;
+    this.votes = {};
+    this.deathQueue = [];
+    this.lastWordsPlayer = null;
+    this.lastDeathPlayer = null;
+    this.banishedPlayer = null;
+    this._lastNightDeaths = [];
+    this.interrupt = null;
+    this._speechQueue = [];
+    this._currentSpeakerId = null;
+    this.sheriffAssignOrder = null;
+
+    if (keepPlayers) {
+      for (const p of this.players) {
+        p.alive = true;
+        p.role = null;
+        p.state = {};
+        p.deathReason = undefined;
+        p.revealed = undefined;
+      }
+    } else {
+      this.players = [];
+    }
+
+    this.message.clear();
+  }
+
   // ========== 即时行动 API ==========
 
   // 狼人自爆

@@ -21,6 +21,10 @@ try {
   process.env.BASE_URL = config.base_url;
   process.env.AUTH_TOKEN = config.auth_token;
   process.env.MODEL = config.model;
+  const { base_url, auth_token, model, ...extraBodyParams } = config;
+  if (Object.keys(extraBodyParams).length > 0) {
+    process.env.EXTRA_BODY_PARAMS = JSON.stringify(extraBodyParams);
+  }
 } catch (e) {
   console.log('未找到 api_key.conf，AI 将使用随机决策');
 }

@@ -79,6 +79,7 @@ const ACTION = {
 
 // ==================== 消息类型 ====================
 const MSG = {
+  GAME_START: 'game_start',
   PHASE_START: 'phase_start',
   SPEECH: 'speech',
   VOTE: 'vote',
@@ -88,7 +89,9 @@ const MSG = {
   WOLF_VOTE_RESULT: 'wolf_vote_result',
   SHERIFF_CANDIDATES: 'sheriff_candidates',
   GAME_OVER: 'game_over',
-  ACTION_REQUIRED: 'action_required'
+  ACTION_REQUIRED: 'action_required',
+  CHAT: 'chat',
+  GAME_BRIEF: 'game_brief'
 };
 
 // ==================== 消息可见性 ====================
@@ -136,8 +139,8 @@ const MSG_TEMPLATE = {
 
   // 死亡与投票
   NIGHT_DEATH: '[系统]昨夜{玩家列表}死亡',
-  DAY_VOTE: '[投票结果]\n{票型}',
-  VOTE_TIE: '[系统]平票PK：{平票玩家}',
+  DAY_VOTE: '[放逐投票结果]\n{票型}',
+  VOTE_TIE: '[系统]放逐投票平票PK：{平票玩家}',
   VOTE_ANNOUNCE: '[系统]{player}被放逐',
   HUNTER_SHOOT: '[系统]{player}开枪带走了{target}',
   HUNTER_PASS: '[系统]{player}放弃开枪',
@@ -158,6 +161,7 @@ const MSG_TEMPLATE = {
   SHERIFF_ELECTED: '[系统]{player}当选警长',
   WITHDRAW: '[系统]{player}退水',
   PEACEFUL_NIGHT: '[系统]昨夜平安夜',
+  GAME_START: '[系统]游戏开始',
   GAME_OVER: '[系统]游戏结束：{结果}',
 
   // 特殊事件

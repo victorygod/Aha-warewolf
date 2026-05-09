@@ -50,6 +50,11 @@ class MessageManager extends EventEmitter {
     this._nextId = 1;
   }
 
+  clear() {
+    this.messages = [];
+    this._nextId = 1;
+  }
+
   // 添加消息
   add({ type, content, playerId, playerName, visibility = VISIBILITY.PUBLIC, metadata = {}, voteDetails, voteCounts, phase, phaseName, deaths, round }) {
     // 死亡消息不暴露死亡原因（原因只在游戏结束时公布）
@@ -85,7 +90,7 @@ class MessageManager extends EventEmitter {
 
   // 判断玩家是否可见某消息
   canSee(player, msg, game) {
-    const rule = VisibilityRules[msg.visibility];
+    const rule = VisibilityRules[msg.visibility] || VisibilityRules[VISIBILITY.PUBLIC];
     if (!rule) return false;
     return rule(player, msg, game);
   }

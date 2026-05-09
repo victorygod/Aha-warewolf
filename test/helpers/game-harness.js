@@ -96,9 +96,12 @@ function createGame(options = {}) {
     }
   });
 
-  game.aiManager = aiManager;
   game.getAIController = (id) => aiManager.get(id);
   game.phaseManager = new PhaseManager(game);
+
+  game.message.on('message:added', (msg) => {
+    aiManager.onMessage(msg);
+  });
 
   return {
     game,
@@ -141,7 +144,7 @@ function _setHuman(game, aiManager, mockModels, humanControllers, playerId, auto
 
   const aiController = aiManager.get(playerId);
   if (aiController) {
-    aiManager.controllers.delete(playerId);
+    aiManager.remove(playerId);
     delete mockModels[playerId];
   }
 

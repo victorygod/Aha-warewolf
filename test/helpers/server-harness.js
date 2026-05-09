@@ -93,7 +93,8 @@ class ServerHarness {
         if (player.isAI) {
           const controller = this.core.aiManager?.get(player.id);
           if (controller) {
-            controller.updateSystemMessage();
+            const context = controller.buildContext({});
+            controller.agent.updateSystemMessage(context, 'game');
           }
         }
       }
@@ -132,7 +133,6 @@ class ServerHarness {
         this.core.currentPresetId = options.presetId || '9-standard';
         this.core.game = new GameEngine({ presetId: this.core.currentPresetId });
         this.core.aiManager = this.core.createAIManager(this.core.game);
-        this.core.game.aiManager = this.core.aiManager;
         resetUsedNames();
         this.core.game.getAIController = (playerId) => this.core.aiManager.get(playerId);
         this.core.setupGameListeners();

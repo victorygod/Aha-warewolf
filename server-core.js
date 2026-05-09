@@ -14,7 +14,8 @@ const { AIManager } = require('./ai/controller');
 const { getRandomProfiles, resetUsedNames, releaseAIName } = require('./ai/agent/prompt');
 const { createLogger, clearLogs } = require('./utils/logger');
 const { getPlayerDisplay } = require('./engine/utils');
-const { BOARD_PRESETS, getEffectiveRules } = require('./engine/config');
+const { BOARD_PRESETS } = require('./engine/config');
+const { MSG } = require('./engine/constants');
 
 class ServerCore {
   constructor(options = {}) {
@@ -41,8 +42,6 @@ class ServerCore {
     // 聊天室
     this.chatMessages = [];
     this.chatMessageId = 0;
-    this._aiChatQueue = [];
-    this._aiChatProcessing = false;
 
     // 统一消息流
     this.displayMessages = [];
@@ -231,15 +230,7 @@ class ServerCore {
     const debugRole = msg.debugRole;
 
     // 初始化游戏
-    if (!this.game) {
-      this.currentPresetId = msg.presetId || '9-standard';
-      this.game = new GameEngine({ presetId: this.currentPresetId });
-      this.aiManager = this.createAIManager(this.game);
-      this.game.aiManager = this.aiManager;
-      resetUsedNames();
-      this.game.getAIController = (playerId) => this.aiManager.get(playerId);
-      this.setupGameListeners();
-    }
+    this._ensureGame(msg.presetId);
 
     // 重连：先查 players，再查 spectators
     const existingPlayer = this.game.players.find(p => p.name === name && !p.isAI);
@@ -303,18 +294,7 @@ class ServerCore {
     }
 
     // 添加玩家
-    const playerId = this._nextPlayerId();
-    this.game.players.push({
-      id: playerId,
-      name,
-      emoji: msg.emoji || '🎭',
-      alive: true,
-      isAI: false,
-      ready: false,
-      role: null,
-      state: {},
-      debugRole
-    });
+    const playerId = this.game.addPlayer({ name, emoji: msg.emoji, isAI: false, debugRole });
 
     this.clients.set(ws, { playerId, name, isSpectator: false });
     this.playerClients.set(playerId, ws);
@@ -334,15 +314,7 @@ class ServerCore {
 
   handleAddAI(ws, msg) {
     // 初始化游戏
-    if (!this.game) {
-      this.currentPresetId = msg.presetId || '9-standard';
-      this.game = new GameEngine({ presetId: this.currentPresetId });
-      this.aiManager = this.createAIManager(this.game);
-      this.game.aiManager = this.aiManager;
-      resetUsedNames();
-      this.game.getAIController = (playerId) => this.aiManager.get(playerId);
-      this.setupGameListeners();
-    }
+    this._ensureGame(msg.presetId);
 
     if (this.game.players.length >= this.game.playerCount) {
       this.send(ws, 'error', { message: '房间已满' });
@@ -350,21 +322,14 @@ class ServerCore {
     }
 
     const profiles = getRandomProfiles(1);
-    const aiPlayerId = this._nextPlayerId();
-    this.game.players.push({
-      id: aiPlayerId,
+    const aiPlayerId = this.game.addPlayer({
       name: profiles[0].name,
-      emoji: '🎭',
+      isAI: true,
       profileName: profiles[0].profileName,
       profile: profiles[0].profile,
       background: profiles[0].background,
       thinking: profiles[0].thinking,
-      speaking: profiles[0].speaking,
-      alive: true,
-      isAI: true,
-      ready: true,
-      role: null,
-      state: {}
+      speaking: profiles[0].speaking
     });
 
     this.createAI(this.aiManager, aiPlayerId, {
@@ -388,11 +353,9 @@ class ServerCore {
       return;
     }
 
-    this.game.players = this.game.players.filter(p => p.id !== playerId);
+    this.game.removePlayer(playerId);
     if (this.aiManager) {
-      const controller = this.aiManager.controllers.get(playerId);
-      if (controller) controller.destroy();
-      this.aiManager.controllers.delete(playerId);
+      this.aiManager.remove(playerId);
     }
     releaseAIName(aiPlayer.name);
     this._updateIdMappings();
@@ -444,7 +407,7 @@ class ServerCore {
 
     const chatMsg = {
       id: ++this.chatMessageId,
-      type: 'chat',
+      type: MSG.CHAT,
       playerId,
       playerName,
       content,
@@ -457,8 +420,10 @@ class ServerCore {
     this.displayMessages.push({ ...chatMsg, source: 'chat', displayId: ++this.displayMessageId });
     this.broadcastState();
 
-    // 触发 AI @提及
-    this._handleChatMentions(chatMsg);
+    // AI 实时感知聊天消息
+    if (this.aiManager && !chatMsg.isAI) {
+      this.aiManager.onMessage(chatMsg);
+    }
   }
 
   handleStartGame(ws, msg) {
@@ -497,83 +462,34 @@ class ServerCore {
 
     // 游戏结束后返回房间：AI 保留且自动准备，人类重置为未准备，观战者保留
     if (wasPlaying) {
-      // 停止游戏
-      if (this.game.phaseManager) {
-        this.game.phaseManager.running = false;
-      }
-
-      // 保留 AI 玩家，重置人类玩家
-      const aiPlayers = this.game.players.filter(p => p.isAI);
-      const humanPlayers = this.game.players.filter(p => !p.isAI);
-
       // 先压缩（此时 role 仍在，压缩信息完整）
       if (this.aiManager) {
-        await this.aiManager.reassignToGame(this.game);
+        this.aiManager.reassignToGame(this.game);
       }
 
-      // 重置 AI 玩家状态
-      aiPlayers.forEach(p => {
-        p.alive = true;
-        p.role = null;
-        p.state = {};
-        p.ready = true;
-        p.deathReason = undefined;
-        p.revealed = undefined;
-      });
+      this.game.reset({ keepPlayers: true });
 
-      // 重置人类玩家状态
-      humanPlayers.forEach(p => {
-        p.alive = true;
-        p.role = null;
-        p.state = {};
-        p.ready = false;
-        p.deathReason = undefined;
-        p.revealed = undefined;
-      });
-
-      // 重置游戏状态
-      this.game.winner = null;
-      this.game.gameOverInfo = null;
-      this.game.round = 1;
-      this.game.sheriff = null;
-      this.game.couples = null;
-      this.game.werewolfTarget = null;
-      this.game.guardTarget = null;
-      this.game.healTarget = null;
-      this.game.poisonTarget = null;
-      this.game.votes = {};
-      this.game.deathQueue = [];
-      this.game.lastWordsPlayer = null;
-      this.game.lastDeathPlayer = null;
-      this.game._lastNightDeaths = [];
-      this.game.interrupt = null;
-      this.game._speechQueue = [];
-      this.game._currentSpeakerId = null;
-      this.game.sheriffAssignOrder = null;
-      this.game.phaseManager = null;
-      this.game._pendingRequests = new Map();
-
-      // 保留玩家数组（AI + 人类），观战者保留
+      // 房间管理：设 ready、重排玩家、重分配 ID
+      const aiPlayers = this.game.players.filter(p => p.isAI);
+      const humanPlayers = this.game.players.filter(p => !p.isAI);
+      aiPlayers.forEach(p => { p.ready = true; });
+      humanPlayers.forEach(p => { p.ready = false; });
       this.game.players = [...aiPlayers, ...humanPlayers];
-      // 重新分配 ID
       this.game.players.forEach((p, i) => { p.id = i + 1; });
       this._updateIdMappings();
 
-      // 清空消息
-      if (this.game.message) {
-        this.game.message.messages = [];
-      }
-
       // 从展示流中移除游戏消息，保留聊天消息
       this.displayMessages = this.displayMessages.filter(m => m.source !== 'game');
-      this._gameOverDisplayId = 0;
 
-      // 更新 AI 的 chatWatermark
-      if (this.aiManager) {
-        for (const controller of this.aiManager.controllers.values()) {
-          controller.agent.lastChatMessageId = this.chatMessageId;
+      // 聊天消息的 playerId 是旧 ID，需要映射到新 ID
+      const newNameToId = new Map();
+      this.game.players.forEach(p => { newNameToId.set(p.name, p.id); });
+      this.displayMessages.forEach(msg => {
+        if (msg.source === 'chat' && msg.playerName && newNameToId.has(msg.playerName)) {
+          msg.playerId = newNameToId.get(msg.playerName);
         }
-      }
+      });
+      this._gameOverDisplayId = 0;
 
       this._checkAndStartGame();
     } else {
@@ -621,10 +537,7 @@ class ServerCore {
     if (!presetId || !BOARD_PRESETS[presetId]) return;
 
     this.currentPresetId = presetId;
-    this.game.presetId = presetId;
-    this.game.preset = BOARD_PRESETS[presetId];
-    this.game.effectiveRules = getEffectiveRules(this.game.preset);
-    this.game.playerCount = this.game.preset.playerCount;
+    this.game.changePreset(presetId);
 
     // 配置变更后全员取消准备
     this.game.players.forEach(p => {
@@ -637,11 +550,9 @@ class ServerCore {
       const aiPlayers = this.game.players.filter(p => p.isAI);
       if (aiPlayers.length > 0) {
         const lastAI = aiPlayers.reduce((a, b) => a.id > b.id ? a : b);
-        this.game.players = this.game.players.filter(p => p.id !== lastAI.id);
+        this.game.removePlayer(lastAI.id);
         if (this.aiManager) {
-          const controller = this.aiManager.controllers.get(lastAI.id);
-          if (controller) controller.destroy();
-          this.aiManager.controllers.delete(lastAI.id);
+          this.aiManager.remove(lastAI.id);
         }
         releaseAIName(lastAI.name);
         continue;
@@ -650,7 +561,7 @@ class ServerCore {
       const humanPlayers = this.game.players.filter(p => !p.isAI);
       if (humanPlayers.length > 0) {
         const lastHuman = humanPlayers.reduce((a, b) => a.id > b.id ? a : b);
-        this.game.players = this.game.players.filter(p => p.id !== lastHuman.id);
+        this.game.removePlayer(lastHuman.id);
         const spectatorId = this._nextSpectatorId++;
         this.spectators.push({ id: spectatorId, name: lastHuman.name, view: 'villager', ws: null });
         // 更新该客户端的映射
@@ -723,7 +634,7 @@ class ServerCore {
       if (player && player.ready) return;
 
       this.backendLogger.info(`[handleSpectate] ${info.name} (playerId=${info.playerId}) 切换为观战者`);
-      this.game.players = this.game.players.filter(p => p.id !== info.playerId);
+      this.game.removePlayer(info.playerId);
       this.playerClients.delete(info.playerId);
 
       const spectatorId = this._nextSpectatorId++;
@@ -770,17 +681,7 @@ class ServerCore {
       this.spectators = this.spectators.filter(s => s.id !== info.spectatorId);
 
       // 加入 players
-      const playerId = this._nextPlayerId();
-      this.game.players.push({
-        id: playerId,
-        name: spectator.name,
-        emoji: '🎭',
-        alive: true,
-        isAI: false,
-        ready: false,
-        role: null,
-        state: {}
-      });
+      const playerId = this.game.addPlayer({ name: spectator.name, isAI: false });
 
       this.clients.set(ws, { playerId, name: spectator.name, isSpectator: false });
       this.playerClients.set(playerId, ws);
@@ -850,16 +751,6 @@ class ServerCore {
     if (!this.game || this.game.players.length < 1) return;
 
     this._gameOverDisplayId = 0;
-
-    // AI Agent 进入游戏模式（增量聊天 + 压缩 + 重置水位线）
-    if (this.aiManager) {
-      for (const controller of this.aiManager.controllers.values()) {
-        const player = controller.getPlayer();
-        if (player) {
-          await controller.agent.enterGame(player, this.game, this.chatMessages, this.chatMessageId);
-        }
-      }
-    }
 
     this.onBeforeAssignRoles();
     this.game.assignRoles();
@@ -951,17 +842,27 @@ class ServerCore {
     const hasWinner = !!this.game?.winner;
     const isSpectator = playerId === null;
 
+    // 获取玩家对象（用于可见性过滤）
+    let player = null;
+    if (!isSpectator && this.game) {
+      player = this.game.players.find(p => p.id === playerId);
+    }
+
     return this.displayMessages.filter(msg => {
       if (msg.source === 'chat') {
+        // 游戏进行中：不显示聊天消息
         if (isRunning) return false;
+        // 游戏结束后：只显示赛后聊天（复盘、AI 发言等）
         if (hasWinner) return msg.displayId >= this._gameOverDisplayId;
+        // 游戏未开始/等待中：显示所有聊天消息
         return true;
       }
 
       if (msg.source === 'game') {
         if (!this.game) return false;
+        // 观战者：上帝视角
         if (isSpectator) return true;
-        const player = this.game.players.find(p => p.id === playerId);
+        // 玩家：按可见性过滤（死亡玩家也能看到公开消息）
         return player && this.game.message.canSee(player, msg, this.game);
       }
 
@@ -1025,149 +926,23 @@ class ServerCore {
     this.broadcastState();
   }
 
-  _exitGameForAllAI() {
-    if (!this.aiManager) return;
-    for (const controller of this.aiManager.controllers.values()) {
-      const player = controller.getPlayer();
-      if (player) {
-        controller.agent.exitGame(player);
-      }
-    }
-  }
-
-  _triggerAIPostGameChat() {
-    if (!this.game || !this.aiManager) return;
-
-    const items = [];
-    for (const [playerId, controller] of this.aiManager.controllers) {
-      const player = this.game.players.find(p => p.id === playerId);
-      if (!player) continue;
-
-      if (!player.alive) {
-        controller.supplementDeadMessages(this.game);
-      }
-
-      const chatContext = controller.buildGameOverChatContext(this.game);
-      items.push({ controller, chatContext });
-    }
-
-    this._aiChatQueue.push(...items);
-    this._processAIChatQueue();
-  }
-
-  _handleChatMentions(chatMsg) {
-    if (!this.game || !this.aiManager) return;
-    if (this.game.phaseManager && this.game.phaseManager.running) return;
-
-    const content = chatMsg.content;
-    const mentionedControllers = new Set();
-
-    let pos = 0;
-    while ((pos = content.indexOf('@', pos)) !== -1) {
-      const textAfterAt = content.slice(pos + 1);
-      if (textAfterAt.length === 0) { pos++; continue; }
-
-      const controller = this._findAIControllerByPrefix(textAfterAt);
-      if (controller && !mentionedControllers.has(controller)) {
-        mentionedControllers.add(controller);
-        const chatContext = controller.handleMention(chatMsg, this.chatMessages);
-        this._enqueueAIChat(controller, chatContext);
-      }
-      pos++;
-    }
-  }
-
-  _findAIControllerByPrefix(textAfterAt) {
-    if (!this.game || !this.aiManager) return null;
-    let bestMatch = null;
-    let bestLength = 0;
-    for (const [playerId, controller] of this.aiManager.controllers) {
-      const player = this.game.players.find(p => p.id === playerId);
-      if (player && textAfterAt.startsWith(player.name) && player.name.length > bestLength) {
-        bestMatch = controller;
-        bestLength = player.name.length;
-      }
-    }
-    return bestMatch;
-  }
-
-  _enqueueAIChat(controller, chatContext) {
-    this._aiChatQueue.push({ controller, chatContext });
-    this._processAIChatQueue();
-  }
-
-  async _processAIChatQueue() {
-    if (this._aiChatProcessing) return;
-    if (this._aiChatQueue.length === 0) return;
-
-    this._aiChatProcessing = true;
-
-    // game_over 事件并行处理，其他事件顺序处理
-    const gameOverItems = [];
-    const sequentialItems = [];
-    while (this._aiChatQueue.length > 0) {
-      const item = this._aiChatQueue.shift();
-      if (item.chatContext.event === 'game_over') {
-        gameOverItems.push(item);
-      } else {
-        sequentialItems.push(item);
-      }
-    }
-
-    // 并行处理所有 game_over 发言
-    if (gameOverItems.length > 0) {
-      this.backendLogger.info(`[AI-Chat] 并行复盘: ${gameOverItems.length} 个 AI 同时发言`);
-      const promises = gameOverItems.map(({ controller, chatContext }) => {
-        const delay = Math.random() * 2000;
-        return new Promise(resolve => setTimeout(resolve, delay))
-          .then(() => this._executeAIChat(controller, chatContext));
-      });
-      await Promise.all(promises);
-    }
-
-    // 顺序处理 @提及 和 waiting 事件
-    for (const { controller, chatContext } of sequentialItems) {
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
-      await this._executeAIChat(controller, chatContext);
-    }
-
-    this._aiChatProcessing = false;
-
-    // 处理期间可能新入队了消息，再检查一次
-    if (this._aiChatQueue.length > 0) {
-      this._processAIChatQueue();
-    }
-  }
-
-  async _executeAIChat(controller, chatContext) {
-    try {
-      const result = await controller.sendChatMessage(chatContext);
-      if (result) {
-        const chatMsg = {
-          id: ++this.chatMessageId,
-          type: 'chat',
-          playerId: result.playerId,
-          playerName: result.playerName,
-          content: result.content,
-          isAI: true,
-          timestamp: Date.now(),
-          event: chatContext.event || 'waiting'
-        };
-        this.chatMessages.push(chatMsg);
-        this.displayMessages.push({ ...chatMsg, source: 'chat', displayId: ++this.displayMessageId });
-        this.broadcastState();
-
-        controller.agent.lastChatMessageId = this.chatMessageId;
-        this._handleChatMentions(chatMsg);
-      }
-
-      if (chatContext.event === 'game_over') {
-        const player = controller.getPlayer();
-        controller.agent.appendGameOverInfo(player, this.game);
-        await controller.agent.postGameCompress(player, this.game);
-      }
-    } catch (e) {
-      this.backendLogger.error(`[AI-Chat] 队列处理错误: ${e.message}`);
+  
+  _broadcastAIChat(player, content, event = 'waiting') {
+    const chatMsg = {
+      id: ++this.chatMessageId,
+      type: MSG.CHAT,
+      playerId: player.id,
+      playerName: player.name,
+      content,
+      isAI: true,
+      timestamp: Date.now(),
+      event
+    };
+    this.chatMessages.push(chatMsg);
+    this.displayMessages.push({ ...chatMsg, source: 'chat', displayId: ++this.displayMessageId });
+    this.broadcastState();
+    if (this.aiManager) {
+      this.aiManager.onMessage(chatMsg);
     }
   }
 
@@ -1189,15 +964,13 @@ class ServerCore {
       // 游戏消息入流
       this.displayMessages.push({ ...msg, source: 'game', displayId: ++this.displayMessageId });
 
-      if (this.game.aiManager) {
-        this.game.aiManager.onMessageAdded(msg);
+      if (this.aiManager) {
+        this.aiManager.onMessage(msg);
       }
 
-      // 游戏结束消息触发 AI 退出游戏模式 + 赛后聊天
+      // 游戏结束消息触发赛后简报
       if (msg.type === 'game_over') {
         this._addGameBrief();
-        this._exitGameForAllAI();
-        this._triggerAIPostGameChat();
       }
 
       // 防抖广播
@@ -1244,6 +1017,19 @@ class ServerCore {
     return Math.max(...this.game.players.map(p => p.id)) + 1;
   }
 
+  _ensureGame(presetId) {
+    if (this.game) return;
+    this.currentPresetId = presetId || '9-standard';
+    this.game = new GameEngine({ presetId: this.currentPresetId });
+    this.aiManager = this.createAIManager(this.game);
+    this.aiManager.chatBroadcastFn = (player, content, event) => {
+      this._broadcastAIChat(player, content, event);
+    };
+    resetUsedNames();
+    this.game.getAIController = (playerId) => this.aiManager.get(playerId);
+    this.setupGameListeners();
+  }
+
   _updateIdMappings() {
     if (!this.game) return;
 
@@ -1258,29 +1044,8 @@ class ServerCore {
     });
     this.playerClients = newPlayerClients;
 
-    // 更新 AI controller 映射（playerId 只需更新 AIController 一处）
-    const newControllers = new Map();
-    for (const player of this.game.players) {
-      if (player.isAI) {
-        for (const [oldId, controller] of this.aiManager.controllers) {
-          if (controller.playerName === player.name) {
-            controller.playerId = player.id;
-            newControllers.set(player.id, controller);
-            break;
-          }
-        }
-      }
-    }
-    this.aiManager.controllers = newControllers;
-
-    // 更新 AI system 消息
-    for (const player of this.game.players) {
-      if (player.isAI) {
-        const controller = this.aiManager.get(player.id);
-        if (controller) {
-          controller.updateSystemMessage();
-        }
-      }
+    if (this.aiManager) {
+      this.aiManager.remapPlayerIds();
     }
   }
 }
