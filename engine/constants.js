@@ -142,8 +142,8 @@ const MSG_TEMPLATE = {
   DAY_VOTE: '[放逐投票结果]\n{票型}',
   VOTE_TIE: '[系统]放逐投票平票PK：{平票玩家}',
   VOTE_ANNOUNCE: '[系统]{player}被放逐',
-  HUNTER_SHOOT: '[系统]{player}开枪带走了{target}',
-  HUNTER_PASS: '[系统]{player}放弃开枪',
+  HUNTER_SHOOT: '[系统]猎人{player}开枪带走了{target}',
+  HUNTER_PASS: '[系统]猎人{player}放弃开枪',
 
   // 技能结果
   SEER_CHECK: '[系统|私密]{player}查验{target}={result}',
@@ -152,7 +152,7 @@ const MSG_TEMPLATE = {
   WITCH_POISON: '[系统|私密]{player}毒杀了{target}',
   CUPID_LINK_SELF: '[系统|私密]{player}连接了{t1}和{t2}为情侣',
   CUPLE_NOTIFY: '[系统|私密]{player}是你的情侣',
-  IDIOT_REVEAL: '[系统]{player}翻牌为白痴',
+  IDIOT_REVEAL: '[系统]白痴{player}翻牌免疫放逐，已失去投票权',
 
   // 阶段与系统
   PHASE_DAY: '[系统]第{round}天',

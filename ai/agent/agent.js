@@ -432,7 +432,7 @@ class Agent {
 
       lastAssistantContent = content || null;
       llmView.push({ role: 'assistant', content });
-      llmView.push({ role: 'user', content: '请使用工具来执行操作。' });
+      llmView.push({ role: 'user', content: '请使用工具来发言或操作。' });
     }
 
     this._saveFailedHistory(lastAssistantContent, lastToolCalls, lastToolResult);

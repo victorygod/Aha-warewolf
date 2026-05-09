@@ -243,7 +243,9 @@ const ROLES = {
           player.alive = true; // 免疫死亡
           game.message.add({
             type: MSG.ACTION,
-            content: `白痴 ${getPlayerDisplay(game.players, player)} 翻牌免疫放逐，已失去投票权`,
+            content: buildMessage('IDIOT_REVEAL', {
+              player: getPlayerDisplay(game.players, player)
+            }),
             playerId: player.id,
             visibility: VISIBILITY.PUBLIC
           });
@@ -451,7 +453,9 @@ const ATTACHMENTS = {
           game.sheriffAssignOrder = null;
           game.message.add({
             type: MSG.SYSTEM,
-            content: `警长传警徽给 ${getPlayerDisplay(game.players, target)}`,
+            content: buildMessage('SHERIFF_PASS_BADGE', {
+              player: getPlayerDisplay(game.players, target)
+            }),
             visibility: VISIBILITY.PUBLIC
           });
           return { success: true };

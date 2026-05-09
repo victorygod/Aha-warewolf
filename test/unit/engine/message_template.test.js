@@ -11,7 +11,7 @@ describe('buildMessage', () => {
 
   it('使用{target}占位符', () => {
     const result = buildMessage('HUNTER_SHOOT', { player: '3号张三', target: '5号李四' });
-    if (result !== '[系统]3号张三开枪带走了5号李四') throw new Error(`格式错误: ${result}`);
+    if (result !== '[系统]猎人3号张三开枪带走了5号李四') throw new Error(`格式错误: ${result}`);
   });
 
   it('使用{票型}占位符', () => {
