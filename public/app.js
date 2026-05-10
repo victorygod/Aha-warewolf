@@ -232,6 +232,8 @@ async function init() {
     const btn = document.getElementById('start-game-btn');
     btn.disabled = true;
     btn.textContent = '中...';
+    renderedMsgIds.clear();
+    messagesInitialized = false;
     controller.sendStartGame();
   });
 
@@ -268,6 +270,7 @@ async function init() {
   controller.onStateChange = updateUI;
   controller.onActionRequired = handleActionRequired;
   controller.onGameReady = handleGameReady;
+  controller.onGameStarted = handleGameStarted;
 
   // 设置面板：输入名字后加入
   elements.readyBtn.addEventListener('click', ready);
@@ -1121,6 +1124,13 @@ function handleGameReady() {
   if (state) updateDefaultAction(state);
 }
 
+function handleGameStarted() {
+  // 清空消息区域，防止上一局消息残留
+  elements.messages.innerHTML = '';
+  renderedMsgIds.clear();
+  messagesInitialized = false;
+}
+
 // 显示错误
 function showError(message) {
   const existingError = document.querySelector('.error-toast');
@@ -1319,7 +1329,7 @@ function updateUI(state) {
   updateHeader(state);
 
   updatePlayers(state);
-  updateMessages();
+  updateMessages(phaseChanged);
 
   // 等待阶段渲染等待房间
   if (state.phase === 'waiting') {
@@ -1562,9 +1572,17 @@ function updatePlayers(state) {
 }
 
 // 更新消息
-function updateMessages() {
+// forceRerender: 状态切换时全量重新渲染
+function updateMessages(forceRerender = false) {
   const messages = controller.isSpectator ? controller.getFilteredMessages() : controller.getMessageHistory();
   const state = controller.getState();
+
+  // 状态切换时全量重新渲染
+  if (forceRerender) {
+    elements.messages.innerHTML = '';
+    renderedMsgIds.clear();
+  }
+
   let addedGame = false;
   let addedChat = false;
 
@@ -1583,10 +1601,10 @@ function updateMessages() {
     }
   }
 
-  if (addedGame || addedChat) {
+  if (addedGame || addedChat || forceRerender) {
     const el = elements.messagesSection;
     if (window.frontendLogger) {
-      window.frontendLogger.info(`[scroll] addedGame=${addedGame}, addedChat=${addedChat}, initialized=${messagesInitialized}, scrollTop=${el.scrollTop}, scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}`);
+      window.frontendLogger.info(`[scroll] addedGame=${addedGame}, addedChat=${addedChat}, forceRerender=${forceRerender}, initialized=${messagesInitialized}, scrollTop=${el.scrollTop}, scrollHeight=${el.scrollHeight}, clientHeight=${el.clientHeight}`);
     }
     scrollToBottom(el);
     messagesInitialized = true;

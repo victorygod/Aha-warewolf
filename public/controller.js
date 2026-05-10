@@ -156,6 +156,13 @@ class Controller {
         }
         break;
 
+      case 'game_started':
+        this.messageHistory = [];
+        if (this.onGameStarted) {
+          this.onGameStarted();
+        }
+        break;
+
       default:
         if (msg.type === 'spectator_assigned') {
           this.isSpectator = true;

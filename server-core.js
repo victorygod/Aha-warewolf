@@ -751,6 +751,7 @@ class ServerCore {
     if (!this.game || this.game.players.length < 1) return;
 
     this._gameOverDisplayId = 0;
+    this.displayMessages = [];
 
     this.onBeforeAssignRoles();
     this.game.assignRoles();
