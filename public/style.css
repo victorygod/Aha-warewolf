@@ -1377,7 +1377,7 @@ body.phase-gameover #action-section {
 }
 
 .transition-char {
-  font-size: 72px;
+  font-size: 96px;
   font-weight: 900;
   color: rgba(230, 0, 18, 0.95);
   text-shadow: 0 0 20px rgba(230, 0, 18, 0.6), 0 0 40px rgba(230, 0, 18, 0.3);

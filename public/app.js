@@ -1687,11 +1687,10 @@ function displayMessage(msg, state) {
     const typeClass = msg.type === 'wolf_speech' ? 'wolf-channel' : (msg.type === 'last_words' ? 'last-words' : '');
     addChatMessage(msg, state, typeClass);
 
-    // 发言立绘：白天发言阶段、AI 玩家、非夜晚
-    if (msg.type === 'speech' && state) {
+    // 发言立绘：仅白天讨论阶段、AI 玩家
+    if (msg.type === 'speech' && state?.phase === 'day_discuss') {
       const speaker = state.players?.find(p => p.id === msg.playerId);
-      const isNight = ['cupid', 'guard', 'night_werewolf_discuss', 'night_werewolf_vote', 'witch', 'seer'].includes(state.phase);
-      if (speaker && speaker.isAI && speaker.profileName && !isNight) {
+      if (speaker && speaker.isAI && speaker.profileName) {
         showSpeakerArt(speaker.profileName, speaker.profile?.splashArt || 'splash_art.webp');
       }
     }

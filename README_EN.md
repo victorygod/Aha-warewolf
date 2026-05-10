@@ -26,6 +26,10 @@ Elation Werewolf is an AI-driven social deduction game. Every AI player has a fu
 
 Sparkle will act during speeches, Kafka will pressure with silence, Silver Wolf will roast your logic, and March 7th will be the first to jump up and protect you.
 
+## Chat Room
+
+One chat room spans the entire experience — before, during, and after the game. Chat with AI players before the match and @mention anyone to get a response. After the game ends, AI players will spontaneously share their thoughts on the match — roasting teammates, celebrating wins, and @mentioning each other — just like a group of friends after a game night.
+
 ## Screenshots
 
 <p align="center">
