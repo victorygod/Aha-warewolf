@@ -3,7 +3,48 @@
  * 只做消息格式化，可见性过滤由 controller 的 getVisibleMessages() 完成
  */
 
-const { ACTION, MSG } = require('../../engine/constants');
+const { ACTION, MSG, CAMP, DEATH_REASON } = require('../../engine/constants');
+
+// 死亡原因中文映射
+const DEATH_REASON_TEXT = {
+  [DEATH_REASON.WEREWOLF]: '被狼人击杀',
+  [DEATH_REASON.POISON]: '被女巫毒杀',
+  [DEATH_REASON.VOTE]: '被放逐',
+  [DEATH_REASON.HUNTER]: '被猎人带走',
+  [DEATH_REASON.CONFLICT]: '同守同救',
+  [DEATH_REASON.COUPLE]: '殉情'
+};
+
+// 获胜阵营中文映射
+const WINNER_TEXT = {
+  [CAMP.GOOD]: '好人阵营',
+  [CAMP.WOLF]: '狼人阵营',
+  [CAMP.THIRD]: '第三方阵营'
+};
+
+/**
+ * 格式化游戏结束信息为文本
+ * @param {Object} gameOverInfo - 游戏结束信息
+ * @returns {string} 格式化后的玩家身份信息
+ */
+function formatGameOverInfo(gameOverInfo) {
+  if (!gameOverInfo?.players) return '';
+  return gameOverInfo.players.map(p => {
+    const roleName = p.role?.name || p.role?.id || '未知角色';
+    if (p.alive) return `${p.name}: ${roleName}`;
+    const deathText = p.deathReason ? DEATH_REASON_TEXT[p.deathReason] || p.deathReason : '死亡';
+    return `${p.name}: ${roleName} (已死亡 - ${deathText})`;
+  }).join('\n');
+}
+
+/**
+ * 获取获胜阵营中文名称
+ * @param {string} winner - 获胜阵营ID
+ * @returns {string} 中文阵营名称
+ */
+function getWinnerText(winner) {
+  return WINNER_TEXT[winner] || '未知阵营';
+}
 
 function formatMessageHistory(messages, players, currentPlayer = null) {
   if (!messages || messages.length === 0) return '';
@@ -119,5 +160,7 @@ module.exports = {
   getPlayerDisplay,
   formatMessageHistory,
   buildToolResultMessage,
-  formatMessageToText
+  formatMessageToText,
+  formatGameOverInfo,
+  getWinnerText
 };

@@ -1,6 +1,6 @@
 const { isSpeech, loadExperience } = require('./prompt');
 const { getToolsForAction, getTool } = require('./tools');
-const { buildToolResultMessage, formatMessageToText } = require('./formatter');
+const { buildToolResultMessage, formatMessageToText, formatGameOverInfo, getWinnerText } = require('./formatter');
 const { LLMModel } = require('./models/llm_model');
 const { RandomModel } = require('./models/random_model');
 const { MockModel } = require('./models/mock_model');
@@ -132,6 +132,9 @@ class Agent {
       case MSG.GAME_OVER:
         // 丢弃上状态的 decision 和 compact（游戏内未完成的行动和压缩）
         this._drainDecisionsAndCompacts();
+        // 构建获胜者和玩家身份信息
+        const winnerName = getWinnerText(msg.winner);
+        const playersInfo = formatGameOverInfo(msg.gameOverInfo);
         return {
           promise: null,
           items: [
@@ -140,7 +143,7 @@ class Agent {
             // 2. 执行赛后 chat 决策（AI 复盘发言）
             {
               type: 'decision',
-              context: { ...context, action: ACTION.CHAT, extraData: { ...context.extraData, chatContext: { event: 'game_over' } } },
+              context: { ...context, action: ACTION.CHAT, extraData: { ...context.extraData, chatContext: { event: 'game_over', winner: winnerName, playersInfo } } },
               callback: context.extraData?.callback
             },
             // 3. 经验沉淀：反思本局并更新个人经验
