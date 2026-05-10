@@ -134,10 +134,7 @@ class Controller {
         if (window.frontendLogger) {
           window.frontendLogger.debug(`[WS] 阶段开始: ${msg.phase} ${msg.phaseName || ''}`);
         }
-        // phase_start 消息会通过 state.messages 同步，不需要手动添加
-        if (this.onStateChange) {
-          this.onStateChange(this.cachedState);
-        }
+        // phase_start 后会紧跟 state 消息，无需重复触发 onStateChange
         break;
 
       case 'phase_end':
@@ -150,9 +147,7 @@ class Controller {
         if (window.frontendLogger) {
           window.frontendLogger.info(`[WS] 死亡公告: ${JSON.stringify(msg.deaths)}`);
         }
-        if (this.onStateChange) {
-          this.onStateChange(this.cachedState);
-        }
+        // death_announce 后会紧跟 state 消息，无需重复触发 onStateChange
         break;
 
       case 'game_ready':

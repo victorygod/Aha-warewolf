@@ -34,12 +34,8 @@ class RandomModel {
       return this._compactResponse(context);
     }
 
-    // analyze 没有 tools，返回最后一条 user 消息的 content 作为分析
     if (context.action === 'analyze') {
-      const messages = context._messagesForLLM || [];
-      const lastUserMsg = messages.slice().reverse().find(m => m.role === 'user' && m.content);
-      const analysisContent = lastUserMsg?.content || ANALYSIS_TEMPLATES[Math.floor(Math.random() * ANALYSIS_TEMPLATES.length)];
-      return { raw: { content: analysisContent }, messages };
+      return { raw: { content: '' }, messages: context._messagesForLLM || [] };
     }
 
     if (!context._tools || context._tools.length === 0) {

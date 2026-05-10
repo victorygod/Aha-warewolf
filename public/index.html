@@ -20,6 +20,7 @@
       <span id="day-count"></span>
       <span id="my-role" class="hidden"></span>
     </header>
+    <div id="header-preset-dropdown" class="hidden"></div>
 
     <!-- 板子信息面板 -->
     <div id="preset-panel" class="hidden">
@@ -35,7 +36,6 @@
     <div id="main-content">
       <!-- 等待房间 -->
       <div id="waiting-room">
-        <div id="waiting-preset"></div>
         <div id="waiting-players"></div>
       </div>
 
@@ -54,10 +54,12 @@
         </div>
         <div id="action-input">
           <input type="text" id="speech-input" placeholder="输入发言内容...">
-          <button id="send-btn">发送</button>
+          <button class="inline-btn ready-btn hidden" id="ready-btn-action">准备</button>
+          <button class="inline-btn unready-btn hidden" id="unready-btn-action">取消</button>
+          <button class="inline-btn spectate-btn hidden" id="spectate-btn-action">观战</button>
           <button class="inline-btn join-game-btn hidden" id="join-game-btn">加入</button>
-          <button class="inline-btn start-game-btn hidden" id="start-game-btn">开始游戏</button>
-          <button class="inline-btn restart-btn hidden" id="restart-btn">返回房间</button>
+          <button class="inline-btn start-game-btn hidden" id="start-game-btn">开局</button>
+          <button class="inline-btn restart-btn hidden" id="restart-btn">返回</button>
         </div>
         <div id="vote-buttons"></div>
         <div id="skill-buttons"></div>

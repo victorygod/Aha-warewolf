@@ -266,7 +266,7 @@ class ServerCore {
     // 游戏已开始 → 新连接自动进入观战席
     if (this.game.phaseManager && this.game.phaseManager.running) {
       const spectatorId = this._nextSpectatorId++;
-      const spectator = { id: spectatorId, name, view: 'god', ws };
+      const spectator = { id: spectatorId, name, view: 'villager', ws };
       this.spectators.push(spectator);
       this.clients.set(ws, { playerId: null, name, isSpectator: true, spectatorId });
       this.send(ws, 'spectator_assigned', { spectatorId, name });
@@ -281,7 +281,7 @@ class ServerCore {
     // 房间已满 → 进入观战席
     if (this.game.players.length >= this.game.playerCount) {
       const spectatorId = this._nextSpectatorId++;
-      const spectator = { id: spectatorId, name, view: 'god', ws };
+      const spectator = { id: spectatorId, name, view: 'villager', ws };
       this.spectators.push(spectator);
       this.clients.set(ws, { playerId: null, name, isSpectator: true, spectatorId });
       this.send(ws, 'spectator_assigned', { spectatorId, name });

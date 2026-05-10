@@ -95,7 +95,7 @@ const CURRENT_TASK = {
   [ACTION.NIGHT_WEREWOLF_VOTE]: (aliveList) => `【狼人投票】可选玩家：\n${aliveList}\n请调用 action_night_werewolf_vote 工具选择今晚要击杀的玩家，或弃权。`,
   [ACTION.SEER]: (aliveList) => `【预言家】可选玩家：\n${aliveList}\n请调用 action_seer 工具选择要查验的玩家。`,
   [ACTION.GUARD]: (aliveList) => `【守卫】可选玩家：\n${aliveList}\n请调用 action_guard 工具选择要守护的玩家。`,
-  [ACTION.DAY_DISCUSS]: () => '【白天发言】轮到你发言了，请分析局势，调用 action_day_discuss 工具简要发言，注意避免信息泄露，提到他人时务必采用名字，不可只用序号，可多多调侃，以普通白话文短句为主，多换行，150字以内。',
+  [ACTION.DAY_DISCUSS]: () => '【白天发言】轮到你发言了，请分析局势，调用 action_day_discuss 工具简要发言，注意避免信息泄露，提到他人时务必采用名字，不可只用序号，可多多调侃，以普通白话文短句为主，多分段，避免连续换行，150字以内。',
   [ACTION.DAY_VOTE]: (aliveList, context) => {
     const allowedTargets = context?.extraData?.allowedTargets;
     let targetList = aliveList;
@@ -164,6 +164,8 @@ const CURRENT_TASK = {
   [ACTION.CHAT]: (_aliveList, context) => {
     const chatContext = context?.extraData?.chatContext || {};
     const event = chatContext.event;
+    const players = context?.players || [];
+    const playerNames = players.map(p => p.name).join('、');
     if (event === 'game_over') {
       const winner = chatContext.winner || '未知';
       const playersInfo = chatContext.playersInfo || '';
@@ -172,11 +174,9 @@ const CURRENT_TASK = {
     if (event === 'mentioned') {
       const mentioner = chatContext.mentioner || '某人';
       const mentionContent = chatContext.mentionContent || '';
-      const recentChat = chatContext.recentChat || '';
-      const chatSection = recentChat ? `\n\n最近聊天：\n${recentChat}` : '';
-      return `【有人@你】${mentioner} 提到了你${chatSection}\n如果你想回应，请调用 action_chat 工具发言，不超过200字，支持 @名字。不想回应可以跳过。`;
+      return `【有人@你】${mentioner} 提到了你\n聊天室成员：${playerNames}\n如果你想回应，请调用 action_chat 工具发言，不超过200字，支持 @名字。不想回应可以跳过。`;
     }
-    return '【聊天室】你可以在聊天室自由发言，打招呼、讨论角色偏好、闲聊都行。请调用 action_chat 工具发言，不超过200字，支持 @名字(不要带位置号)。不想说话可以跳过。';
+    return `【聊天室】聊天室成员：${playerNames}\n你可以在聊天室自由发言，打招呼、讨论角色偏好、闲聊都行。请调用 action_chat 工具发言，不超过200字，支持 @名字(不要带位置号)。不想说话可以跳过。`;
   },
   reflect: (_aliveList, context) => {
     const roleId = context.self?.role?.id || context.self?.role;
@@ -189,7 +189,7 @@ const CURRENT_TASK = {
     const experienceSection = currentExperience
       ? `你本局使用的个人经验如下：\n${currentExperience}`
       : '你目前没有该角色的个人经验。';
-    return `【经验沉淀】游戏结束。你本局角色是${roleName}（${roleId}），板子为${presetId}，${result}。\n${experienceSection}\n\n请回顾本局表现，总结得失。如果需要更新经验，调用 update_experience 工具全量替换（roleId 为角色ID，content 为新经验内容）；你可以多次调用完善。如果当前经验无需修改，直接说明即可，不必调用工具。`;
+    return `【经验沉淀】游戏结束。你本局角色是${roleName}（${roleId}），板子为${presetId}，${result}。\n${experienceSection}\n\n请回顾本局表现，总结得失。如果需要更新经验，调用 update_experience 工具全量替换（roleId 为角色ID，content 为新经验内容）；你可以多次调用完善，注意需要高度凝练，一般不需要本局具体内容。如果当前经验无需修改，直接说明即可，不必调用工具。`;
   }
 };
 

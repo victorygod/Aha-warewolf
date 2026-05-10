@@ -33,7 +33,7 @@ describe('RandomModel - 基础', () => {
   it('无 tool 时返回分析文本', () => {
     const model = new RandomModel(1);
     const result = model.call({ action: 'analyze', _tools: [], _messagesForLLM: [] });
-    if (!result?.raw?.content || typeof result.raw.content !== 'string') {
+    if (typeof result?.raw?.content !== 'string') {
       throw new Error('无 tool 应返回 { raw: { content: string } } 格式');
     }
   });

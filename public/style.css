@@ -122,7 +122,7 @@ body.phase-day::after {
 /* 头部 */
 #header {
   background: rgba(13, 13, 13, 0.9);
-  padding: 12px 16px;
+  padding: 8px 12px;
   text-align: center;
   position: sticky;
   top: 0;
@@ -134,7 +134,7 @@ body.phase-day::after {
   justify-content: center;
   gap: 10px;
   flex-wrap: wrap;
-  min-height: 40px;
+  min-height: 36px;
   flex-shrink: 0;
 }
 
@@ -146,6 +146,20 @@ body.phase-day::after {
 body.phase-waiting #phase-info {
   font-size: 24px;
   font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+body.phase-waiting #phase-info .header-title {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+body.phase-waiting #phase-info .header-preset {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 #day-count {
@@ -238,7 +252,7 @@ body.phase-gameover #players-right {
   background: rgba(10, 10, 12, 0.55);
   backdrop-filter: blur(8px);
   border-radius: 12px;
-  padding: 12px 12px 0 12px;
+  padding: 8px 8px 0 8px;
 }
 
 body.phase-waiting #main-content,
@@ -377,6 +391,9 @@ body.phase-gameover #main-content {
   padding: 1px 6px;
   border-radius: 4px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .player-name {
@@ -392,19 +409,18 @@ body.phase-gameover #main-content {
 .player-role {
   font-size: 11px;
   color: var(--gold);
-  margin-top: 2px;
 }
 
 /* 消息区域 */
 #messages-section {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 8px;
   min-height: 0;
 }
 
 .message {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   animation: fadeIn 0.3s;
 }
 
@@ -575,8 +591,8 @@ body.phase-gameover #main-content {
 .chat-message {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 12px;
-  gap: 8px;
+  margin-bottom: 8px;
+  gap: 6px;
 }
 
 .chat-message.self {
@@ -584,15 +600,15 @@ body.phase-gameover #main-content {
 }
 
 .chat-avatar {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
 }
 
 .chat-body {
-  max-width: 75%;
+  max-width: calc(100% - 34px);
   min-width: 0;
 }
 
@@ -784,7 +800,7 @@ body.phase-gameover #main-content {
 /* 操作区域 */
 #action-section {
   background: rgba(13, 13, 13, 0.9);
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-top: 1px solid rgba(230, 0, 18, 0.15);
   flex-shrink: 0;
   position: relative;
@@ -807,6 +823,39 @@ body.phase-gameover #action-section {
   color: var(--gold);
   margin-bottom: 4px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+}
+
+.debug-prompt {
+  position: absolute;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.debug-prompt-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.debug-role-action {
+  padding: 1px 4px;
+  border: 1px solid rgba(230, 0, 18, 0.4);
+  border-radius: 8px;
+  background: rgba(26, 26, 26, 0.9);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.debug-role-action:focus {
+  border-color: var(--red);
 }
 
 #action-input {
@@ -820,6 +869,7 @@ body.phase-gameover #action-section {
 
 #speech-input {
   flex: 1;
+  min-width: 0;
   padding: 10px 14px;
   border: 1px solid var(--red);
   border-radius: 20px;
@@ -837,21 +887,6 @@ body.phase-gameover #action-section {
 #speech-input:focus {
   border-color: var(--white);
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
-}
-
-#send-btn {
-  padding: 10px 20px;
-  background: var(--action-default);
-  color: #fff;
-  border: none;
-  border-radius: 20px;
-  font-size: 15px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-#send-btn:active {
-  transform: scale(0.95);
 }
 
 .inline-btn {
@@ -1082,28 +1117,64 @@ body.phase-gameover #action-section {
   transform: scale(0.95);
 }
 
-/* 响应式 */
+/* 响应式 - 竖屏手机 */
 @media (max-width: 480px) {
-  #players-left, #players-right { width: 62px; }
-  #main-content { margin-left: 62px; margin-right: 62px; }
+  #players-left, #players-right { width: 68px; }
+  #main-content { margin-left: 68px; margin-right: 68px; }
   body.phase-waiting #main-content,
   body.phase-gameover #main-content { margin-left: 0; margin-right: 0; }
-  #action-section { margin-left: -62px; margin-right: -62px; padding-left: 74px; padding-right: 74px; }
+  #action-section { margin-left: -68px; margin-right: -68px; padding-left: 80px; padding-right: 80px; }
   body.phase-waiting #action-section,
   body.phase-gameover #action-section { margin-left: 0; margin-right: 0; padding-left: 12px; padding-right: 12px; }
-  .player-avatar { width: 32px; height: 32px; }
-  .player-name { font-size: 11px; max-width: 52px; }
-  .player-position { font-size: 10px; }
-  .message-content { font-size: 14px; }
+
+  .player-avatar { width: 46px; height: 46px; }
+  .player-name { font-size: 14px; max-width: 60px; }
+  .player-position { font-size: 12px; }
+  .player-role { font-size: 13px; }
+  .player-card { padding: 8px 2px; }
+  .player-card.self::after { font-size: 11px; padding: 2px 5px; }
+  .player-card.empty-slot .empty-text { font-size: 13px; }
+  .player-avatar-wrapper .sheriff-badge { font-size: 18px; }
+
+  #header { padding: 10px 12px; }
+  #phase-info { font-size: 20px; }
+  #day-count { font-size: 15px; }
+  #my-role { font-size: 15px; padding: 3px 12px; }
+  .role-badge { font-size: 14px; padding: 3px 12px; }
+  .couple-info { font-size: 14px; }
+
+  .message-content { font-size: 17px; }
+  .message.system .message-content { font-size: 16px; }
+  .message.system.opening .message-content { font-size: 20px; }
+  .message-sender { font-size: 14px; }
+  .msg-system { font-size: 14px; }
+
   .chat-avatar { width: 30px; height: 30px; }
-  .chat-bubble { font-size: 14px; padding: 6px 10px; }
-  .waiting-card { padding: 8px 10px; gap: 8px; }
-  .waiting-card-name { font-size: 13px; }
-  .waiting-btn { font-size: 11px; padding: 3px 8px; }
-  #waiting-players { gap: 8px; }
-  .transition-char { font-size: 48px; }
-  .transition-left { top: 8vh; left: 6vw; }
-  .transition-right { bottom: 8vh; right: 6vw; }
+  .chat-bubble { font-size: 18px; padding: 10px 14px; line-height: 1.7; }
+  .chat-name { font-size: 14px; }
+  .chat-sheriff-mark { font-size: 15px; }
+
+  #action-prompt { font-size: 18px; }
+  #speech-input { font-size: 17px; padding: 12px 16px; }
+  .vote-btn, .skill-btn { font-size: 16px; padding: 10px 18px; }
+  .inline-btn { font-size: 15px; padding: 8px 16px; }
+  .skill-btn.poison { font-size: 15px; }
+
+  .phase-divider span { font-size: 15px; }
+  .game-brief-content { font-size: 15px; }
+
+  .waiting-card { padding: 6px 8px; gap: 6px; }
+  .waiting-card-name { font-size: 14px; }
+  .waiting-card .player-avatar { width: 32px; height: 32px; }
+  .waiting-card-status { font-size: 11px; }
+  #waiting-players { gap: 4px; grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .transition-bg { background-size: cover; }
+  .transition-char { font-size: 56px; }
+
+  .game-over strong { font-size: 22px; }
+  .game-over .all-roles { font-size: 15px; }
+  .spectator-item { font-size: 14px; }
 }
 
 @media (min-width: 768px) {
@@ -1299,9 +1370,22 @@ body.phase-gameover #action-section {
 }
 
 @media (max-width: 480px) {
+  #speaker-art {
+    overflow: visible;
+  }
+
   #speaker-art img {
-    max-height: 80vh;
-    max-width: 70vw;
+    max-height: none;
+    max-width: none;
+    height: 95vh;
+  }
+
+  #speaker-art.slide-in {
+    animation: speakerSlideInMobile 0.4s ease-out forwards;
+  }
+
+  #speaker-art.slide-out {
+    animation: speakerSlideOutMobile 0.3s ease-in forwards;
   }
 }
 
@@ -1323,6 +1407,17 @@ body.phase-gameover #action-section {
   to { opacity: 0; transform: translateY(40px); }
 }
 
+@keyframes speakerSlideInMobile {
+  0% { opacity: 0; transform: translateX(60vw) scale(0.6); }
+  50% { opacity: 1; transform: translateX(0) scale(0.85); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes speakerSlideOutMobile {
+  0% { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-30vw) scale(0.8); }
+}
+
 /* 天黑请闭眼转场 */
 #night-transition {
   position: fixed;
@@ -1339,23 +1434,19 @@ body.phase-gameover #action-section {
 }
 
 .transition-bg {
-  position: relative;
-  height: 100vh;
-  width: min(66.7vw, 100vw);
+  position: absolute;
+  inset: 0;
   background: url('/assets/characters/changyeyuexu.jpg') center / contain no-repeat;
   filter: brightness(1.0);
 }
 
 .transition-text {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(66.7vw, 100vw);
+  inset: 0;
   z-index: 1;
   pointer-events: none;
   display: flex;
+  justify-content: space-between;
 }
 
 .transition-col {
@@ -1365,15 +1456,19 @@ body.phase-gameover #action-section {
 }
 
 .transition-left {
-  margin-top: 12%;
-  margin-left: 8%;
+  margin-top: 5%;
+  margin-left: 21%;
 }
 
 .transition-right {
   margin-top: auto;
-  margin-bottom: 12%;
-  margin-left: auto;
-  margin-right: 8%;
+  margin-bottom: 5%;
+  margin-right: 21%;
+}
+
+@media (max-width: 480px) {
+  .transition-left { margin-left: 5%; }
+  .transition-right { margin-right: 5%; }
 }
 
 .transition-char {
@@ -1558,7 +1653,7 @@ body.phase-gameover #action-section {
   display: none;
   flex-direction: column;
   align-items: center;
-  padding: 16px;
+  padding: 8px 8px 4px 8px;
 }
 
 body.phase-waiting #waiting-room {
@@ -1574,81 +1669,29 @@ body.phase-gameover #messages-section {
   background: rgba(10, 10, 12, 0.55);
   backdrop-filter: blur(8px);
   border-radius: 12px;
-  margin: 8px 0;
+  margin: 0;
 }
 
 body.phase-waiting #waiting-room {
   flex-shrink: 0;
 }
 
-#waiting-preset {
-  max-width: 700px;
-  width: 100%;
-  margin-bottom: 16px;
-  position: relative;
-}
-
-#waiting-preset-current {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border: 1px solid rgba(230, 0, 18, 0.5);
-  border-radius: 10px;
-  background: rgba(13, 13, 13, 0.75);
-  color: #fff;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  user-select: none;
-}
-
-#waiting-preset-current .preset-name {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-#waiting-preset-current .preset-roles {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-#waiting-preset-current:hover {
-  border-color: var(--red);
-  background: rgba(13, 13, 13, 0.85);
-}
-
-#waiting-preset-current .preset-arrow {
-  font-size: 11px;
-  color: var(--text-muted);
-  transition: transform 0.2s;
-}
-
-#waiting-preset.open #waiting-preset-current .preset-arrow {
-  transform: rotate(180deg);
-}
-
-#waiting-preset-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 4px;
+#header-preset-dropdown {
+  position: fixed;
   background: rgba(26, 26, 26, 0.98);
   border: 1px solid rgba(230, 0, 18, 0.25);
   border-radius: 12px;
   padding: 6px 0;
-  z-index: 60;
+  z-index: 110;
   max-height: 50vh;
   overflow-y: auto;
 }
 
-#waiting-preset.open #waiting-preset-dropdown {
-  display: block;
+#header-preset-dropdown.hidden {
+  display: none;
 }
 
-#waiting-preset-dropdown .preset-option {
+#header-preset-dropdown .preset-option {
   display: block;
   padding: 10px 14px;
   border: none;
@@ -1660,16 +1703,16 @@ body.phase-waiting #waiting-room {
   margin-bottom: 0;
 }
 
-#waiting-preset-dropdown .preset-option:last-child {
+#header-preset-dropdown .preset-option:last-child {
   margin-bottom: 0;
 }
 
-#waiting-preset-dropdown .preset-option:hover {
+#header-preset-dropdown .preset-option:hover {
   background: rgba(230, 0, 18, 0.1);
   border-left-color: var(--red);
 }
 
-#waiting-preset-dropdown .preset-option.selected {
+#header-preset-dropdown .preset-option.selected {
   background: rgba(230, 0, 18, 0.12);
   border-left-color: var(--red);
 }
@@ -1695,7 +1738,7 @@ body.phase-waiting #waiting-room {
 #waiting-players {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
+  gap: 4px;
   max-width: 700px;
   width: 100%;
 }
@@ -1707,7 +1750,7 @@ body.phase-waiting #waiting-room {
   background: rgba(26, 26, 26, 0.85);
   border: 1px solid rgba(230, 0, 18, 0.2);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   transition: border-color 0.2s, background 0.2s;
 }
 
@@ -1720,13 +1763,6 @@ body.phase-waiting #waiting-room {
   gap: 4px 8px;
 }
 
-.waiting-card-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  width: 100%;
-}
-
 .waiting-card.self {
   border-color: var(--red);
   background: rgba(26, 26, 26, 0.85);
@@ -1734,13 +1770,19 @@ body.phase-waiting #waiting-room {
 
 .waiting-card.ai {
   opacity: 0.85;
+  cursor: pointer;
+}
+
+.waiting-card.ai:hover {
+  opacity: 1;
+  border-color: rgba(230, 0, 18, 0.5);
+  background: rgba(230, 0, 18, 0.08);
 }
 
 .waiting-card.empty-slot {
   border: 2px dashed rgba(230, 0, 18, 0.2);
   background: rgba(26, 26, 26, 0.85);
   cursor: pointer;
-  justify-content: center;
 }
 
 .waiting-card.empty-slot:hover {
@@ -1758,6 +1800,7 @@ body.phase-waiting #waiting-room {
   display: flex;
   align-items: center;
   gap: 4px;
+  width: 100%;
 }
 
 .waiting-card-name {
@@ -1767,6 +1810,16 @@ body.phase-waiting #waiting-room {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.ready-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4CAF50;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .waiting-card-name.editable {
@@ -1862,19 +1915,31 @@ body.phase-waiting #waiting-room {
   color: #fff;
 }
 
-.debug-role-select {
-  padding: 2px 4px;
-  border: 1px solid rgba(230, 0, 18, 0.3);
-  border-radius: 8px;
-  background: rgba(26, 26, 26, 0.9);
-  color: var(--text-primary);
-  font-size: 11px;
-  outline: none;
-  cursor: pointer;
+.inline-btn.ready-btn {
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
+  border-color: var(--red);
+  color: #fff;
+  font-weight: 700;
 }
 
-.debug-role-select:focus {
-  border-color: var(--red);
+.inline-btn.ready-btn:hover {
+  opacity: 0.9;
+}
+
+.inline-btn.unready-btn {
+  background: rgba(102, 102, 102, 0.2);
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+.inline-btn.spectate-btn {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--white);
+}
+
+.inline-btn.spectate-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .waiting-btn.join-btn {
@@ -1885,8 +1950,8 @@ body.phase-waiting #waiting-room {
 
 /* 观战区域 */
 #waiting-spectators {
-  margin-top: 16px;
-  padding: 12px 16px;
+  margin-top: 8px;
+  padding: 8px 12px;
   border-top: 1px solid rgba(230, 0, 18, 0.1);
   background: rgba(26, 26, 26, 0.85);
   border-radius: 12px;
@@ -1918,7 +1983,8 @@ body.phase-waiting #waiting-room {
 }
 
 .spectator-badge {
-  float: right;
+  position: absolute;
+  right: 0;
   font-size: 12px;
   color: var(--text-secondary);
   padding: 2px 8px;

@@ -77,7 +77,6 @@ const elements = {
   actionPrompt: document.getElementById('action-prompt'),
   actionInput: document.getElementById('action-input'),
   speechInput: document.getElementById('speech-input'),
-  sendBtn: document.getElementById('send-btn'),
   voteButtons: document.getElementById('vote-buttons'),
   skillButtons: document.getElementById('skill-buttons'),
   setupPanel: document.getElementById('setup-panel'),
@@ -90,7 +89,6 @@ const elements = {
   presetPanelRoles: document.getElementById('preset-panel-roles'),
   presetPanelRules: document.getElementById('preset-panel-rules'),
   waitingRoom: document.getElementById('waiting-room'),
-  waitingPreset: document.getElementById('waiting-preset'),
   waitingPlayers: document.getElementById('waiting-players')
 };
 
@@ -99,6 +97,11 @@ let currentAction = null;
 let messagesInitialized = false;
 let lastPhase = null;
 let nightTransitionShown = false;
+let renderedMsgIds = new Set();
+let lastRenderedPlayersKey = null;
+let lastActionKey = null;
+let lastHeaderKey = null;
+let lastWaitingRoomKey = null;
 
 function isNearBottom(el, threshold = 80) {
   return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
@@ -114,6 +117,7 @@ function scrollToBottomIfNear(el) {
 let presets = {};
 let selectedPresetId = null;
 let presetPanelOpen = false;
+let headerPresetDropdownOpen = false;
 let lockedPresetId = null; // 当前被锁定的板子ID（第一个玩家选的）
 
 // 服务器配置（从API获取）
@@ -203,7 +207,6 @@ async function init() {
   }
 
   try {
-  elements.sendBtn.addEventListener('click', sendSpeech);
   elements.speechInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendSpeech();
   });
@@ -213,17 +216,33 @@ async function init() {
     controller.sendSwitchRole('player');
   });
 
+  // 准备/取消准备/去观战按钮
+  document.getElementById('ready-btn-action').addEventListener('click', () => {
+    controller.sendReady();
+  });
+  document.getElementById('unready-btn-action').addEventListener('click', () => {
+    controller.sendUnready();
+  });
+  document.getElementById('spectate-btn-action').addEventListener('click', () => {
+    controller.sendSpectate();
+  });
+
   // 开始游戏按钮（全 AI）
   document.getElementById('start-game-btn').addEventListener('click', () => {
     const btn = document.getElementById('start-game-btn');
     btn.disabled = true;
-    btn.textContent = '开始中...';
+    btn.textContent = '中...';
     controller.sendStartGame();
   });
 
   document.getElementById('restart-btn').addEventListener('click', async () => {
     nightTransitionShown = false;
     messagesInitialized = false;
+    renderedMsgIds.clear();
+    lastRenderedPlayersKey = null;
+    lastActionKey = null;
+    lastHeaderKey = null;
+    lastWaitingRoomKey = null;
     await controller.reset();
   });
 
@@ -237,9 +256,11 @@ async function init() {
       elements.presetPanel.classList.remove('visible');
       elements.presetPanel.classList.add('hidden');
     }
-    // 关闭板子下拉
-    if (elements.waitingPreset && !elements.waitingPreset.contains(e.target)) {
-      elements.waitingPreset.classList.remove('open');
+    // 关闭标题栏板子下拉
+    const headerDropdown = document.getElementById('header-preset-dropdown');
+    if (headerPresetDropdownOpen && !document.getElementById('header').contains(e.target) && !headerDropdown.contains(e.target)) {
+      headerPresetDropdownOpen = false;
+      headerDropdown.classList.add('hidden');
     }
   });
 
@@ -315,11 +336,6 @@ async function loadPresets() {
     }
     renderPresetList(lockedPresetId);
     updateDebugRoleSelect(presets[selectedPresetId]?.roles);
-    // 根据 debug 模式显示/隐藏 debug 组件
-    const debugRoleGroup = document.getElementById('debug-role-group');
-    if (debugRoleGroup && SERVER_DEBUG_MODE) {
-      debugRoleGroup.classList.remove('hidden');
-    }
   } catch (e) {
     if (window.frontendLogger) {
       window.frontendLogger.error('加载板子列表失败: ' + e.message + ' stack: ' + (e.stack || ''));
@@ -384,9 +400,10 @@ function buildDebugRoleOptionValues(roles, selectedRole) {
 }
 
 function updateDebugRoleSelect(roles) {
-  const debugRoleSelect = document.getElementById('debug-role-select');
-  if (!debugRoleSelect || !roles) return;
-  debugRoleSelect.innerHTML = buildDebugRoleOptionValues(roles);
+  const el = document.getElementById('debug-role-action');
+  if (el && roles) {
+    el.innerHTML = buildDebugRoleOptionValues(roles);
+  }
 }
 
 // 角色概览文本
@@ -414,12 +431,60 @@ function showPresetLocked(presetId) {
   renderPresetList(presetId);
 }
 
+// 切换等待阶段标题栏板子下拉
+function toggleWaitingPresetDropdown() {
+  const dropdown = document.getElementById('header-preset-dropdown');
+  const header = document.getElementById('header');
+  if (!dropdown || !header) return;
+
+  headerPresetDropdownOpen = !headerPresetDropdownOpen;
+  if (headerPresetDropdownOpen) {
+    const state = controller.getState();
+    const currentPresetId = state?.presetId || selectedPresetId;
+
+    let html = '';
+    for (const [id, preset] of Object.entries(presets)) {
+      const isSelected = id === currentPresetId;
+      html += `<div class="preset-option${isSelected ? ' selected' : ''}" data-preset-id="${id}">
+        <div class="preset-name">${preset.name}${isSelected ? ' ✓' : ''}</div>
+        <div class="preset-desc">${preset.description || ''}</div>
+        <div class="preset-roles">${summarizeRoles(preset.roles)}</div>
+      </div>`;
+    }
+    dropdown.innerHTML = html;
+
+    const rect = header.getBoundingClientRect();
+    dropdown.style.top = rect.bottom + 'px';
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.width = rect.width + 'px';
+    dropdown.classList.remove('hidden');
+
+    dropdown.querySelectorAll('.preset-option').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.presetId;
+        if (id === currentPresetId) {
+          headerPresetDropdownOpen = false;
+          dropdown.classList.add('hidden');
+          return;
+        }
+        selectedPresetId = id;
+        controller.sendChangePreset(id);
+        headerPresetDropdownOpen = false;
+        dropdown.classList.add('hidden');
+      });
+    });
+  } else {
+    dropdown.classList.add('hidden');
+  }
+}
+
 // 切换板子信息面板（游戏中）
 function togglePresetPanel() {
   const state = controller.getState();
 
-  // 等待阶段：板子选择器已在 waiting-room 中，不弹面板
+  // 等待阶段：标题栏下拉板子选择器
   if (state?.phase === 'waiting') {
+    toggleWaitingPresetDropdown();
     return;
   }
 
@@ -454,7 +519,7 @@ function renderPresetPanel(preset) {
 async function ready() {
   const name = elements.playerNameInput.value.trim() || `玩家${Date.now() % 1000}`;
   const presetId = selectedPresetId || '9-standard';
-  const debugRoleSelect = document.getElementById('debug-role-select');
+  const debugRoleSelect = document.getElementById('debug-role-action');
   const debugRole = (SERVER_DEBUG_MODE && debugRoleSelect && debugRoleSelect.value) || null;
 
   const result = await controller.join(name, presetId, debugRole);
@@ -518,7 +583,6 @@ function handleActionRequired(msg) {
       elements.actionPrompt.textContent = '轮到你发言了';
       elements.speechInput.placeholder = '输入发言内容...';
       elements.speechInput.disabled = false;
-      elements.sendBtn.disabled = false;
       break;
 
     case ACTION.DAY_VOTE:
@@ -986,7 +1050,6 @@ async function sendSpeech() {
 // 渲染聊天消息
 function renderChatMessage(msg, state) {
   const msgId = msg.displayId || msg.id;
-  if (document.querySelector(`[data-msg-id="${msgId}"]`)) return;
 
   // 游戏简讯分割线
   if (msg.type === 'game_brief') {
@@ -1073,9 +1136,12 @@ function showError(message) {
 // 重新渲染消息（观战者切换视角时调用）
 function rerenderMessages() {
   elements.messages.innerHTML = '';
+  renderedMsgIds.clear();
   const messages = controller.isSpectator ? controller.getFilteredMessages() : controller.getMessageHistory();
   const state = controller.getState();
   messages.forEach(msg => {
+    const msgId = msg.displayId || msg.id;
+    renderedMsgIds.add(msgId);
     if (msg.source === 'chat') {
       renderChatMessage(msg, state);
     } else {
@@ -1088,59 +1154,15 @@ function rerenderMessages() {
 function renderWaitingRoom(state) {
   if (!elements.waitingRoom || !elements.waitingPlayers) return;
 
+  const players = state.players || [];
+  const waitingKey = players.map(p => `${p.id}:${p.name}:${p.ready ? 1 : 0}:${p.isAI ? 1 : 0}:${p.profileName || ''}`).join('|') + `:${state.playerCount}:${controller.isSpectator}:${state.presetLocked}`;
+  if (waitingKey === lastWaitingRoomKey) return;
+  lastWaitingRoomKey = waitingKey;
+
   elements.waitingPlayers.innerHTML = '';
   const myPlayer = controller.getMyPlayer();
   const total = state.playerCount || state.preset?.playerCount || 9;
   const isSpectator = controller.isSpectator;
-
-  // 渲染板子选择器
-  if (elements.waitingPreset) {
-    const currentPresetId = state.presetId || selectedPresetId;
-    const currentPreset = presets[currentPresetId];
-    const currentName = currentPreset ? currentPreset.name : '选择板子';
-    const currentRoles = currentPreset ? summarizeRoles(currentPreset.roles) : '';
-
-    let dropdownHtml = '';
-    for (const [id, preset] of Object.entries(presets)) {
-      const isSelected = id === currentPresetId;
-      const roleSummary = summarizeRoles(preset.roles);
-      const rulesHtml = (preset.ruleDescriptions || []).map(r => `<div class="preset-rule">· ${r}</div>`).join('');
-      dropdownHtml += `<div class="preset-option${isSelected ? ' selected' : ''}" data-preset-id="${id}">
-        <div class="preset-name">${preset.name}${isSelected ? ' ✓' : ''}</div>
-        <div class="preset-desc">${preset.description || ''}</div>
-        <div class="preset-roles">${roleSummary}</div>
-      </div>`;
-    }
-
-    elements.waitingPreset.innerHTML = `
-      <div id="waiting-preset-current">
-        <span class="preset-name">${currentName}</span>
-        <span class="preset-roles">${currentRoles}</span>
-        <span class="preset-arrow">▼</span>
-      </div>
-      <div id="waiting-preset-dropdown">${dropdownHtml}</div>
-    `;
-
-    // 点击切换下拉
-    const currentEl = elements.waitingPreset.querySelector('#waiting-preset-current');
-    currentEl.addEventListener('click', () => {
-      elements.waitingPreset.classList.toggle('open');
-    });
-
-    // 点击选项
-    elements.waitingPreset.querySelectorAll('#waiting-preset-dropdown .preset-option').forEach(el => {
-      el.addEventListener('click', () => {
-        const id = el.dataset.presetId;
-        if (id === currentPresetId) {
-          elements.waitingPreset.classList.remove('open');
-          return;
-        }
-        selectedPresetId = id;
-        controller.sendChangePreset(id);
-        elements.waitingPreset.classList.remove('open');
-      });
-    });
-  }
 
   // 渲染玩家卡片
   state.players?.forEach((player, index) => {
@@ -1156,94 +1178,41 @@ function renderWaitingRoom(state) {
       ? `/profiles/${player.profileName}/${player.profile?.icon || 'icon.webp'}`
       : '/assets/masks/fools_mask.webp';
 
-    const statusText = player.ready ? '✓ 已准备' : '';
-
-    const debugRoleSelect = SERVER_DEBUG_MODE && state.preset?.roles && isSelf && !player.ready
-      ? buildDebugRoleOptionValues(state.preset.roles, player.debugRole)
-      : '';
-
-    let actionsHtml = '';
-    if (state.phase === 'waiting') {
-      if (isSelf && !player.ready) {
-        actionsHtml = `
-          <div class="waiting-card-row">
-            <button class="waiting-btn ready-btn" data-action="ready">准备</button>
-            <button class="waiting-btn spectate-btn" data-action="spectate">去观战</button>
-          </div>
-        `;
-      } else if (isSelf && player.ready) {
-        actionsHtml = `
-          <div class="waiting-card-row">
-            <button class="waiting-btn unready-btn" data-action="unready">取消准备</button>
-          </div>
-        `;
-      } else if (player.isAI) {
-        actionsHtml = `
-          <div class="waiting-card-row">
-            <button class="waiting-btn kick-btn" data-action="kick" data-player-id="${player.id}">踢出</button>
-          </div>
-        `;
-      }
-    }
-
+    const readyDot = player.ready ? '<span class="ready-dot"></span>' : '';
     const nameRow = `<div class="waiting-card-name-row">
           <span class="waiting-card-name${isSelf && !player.ready ? ' editable' : ''}" ${isSelf && !player.ready ? 'contenteditable="true"' : ''} data-field="name">${player.name}</span>
+          ${readyDot}
           ${isSelf && !player.ready ? '<span class="waiting-card-edit-hint">✏</span>' : ''}
-          ${debugRoleSelect ? `<select class="debug-role-select" data-action="debug-role">${debugRoleSelect}</select>` : ''}
         </div>`;
-    const statusRow = statusText ? `<div class="waiting-card-status">${statusText}</div>` : '';
 
     card.innerHTML = `
       <img class="player-avatar" src="${avatarSrc}" alt="${player.name}" onerror="this.src='/assets/masks/fools_mask.webp'">
       <div class="waiting-card-body">
         ${nameRow}
-        ${statusRow}
-        ${actionsHtml}
       </div>
     `;
 
-    // AI 玩家点击头像弹出详情
-    if (player.isAI && player.profileName && player.profile) {
-      card.querySelector('.player-avatar').style.cursor = 'pointer';
-      card.querySelector('.player-avatar').addEventListener('click', () => {
-        showProfilePopup(player.profileName, player.profile);
+    // AI 玩家点击卡片踢出（点击头像弹详情除外）
+    if (player.isAI && state.phase === 'waiting') {
+      card.title = '点击踢出';
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.player-avatar') && player.profileName && player.profile) return;
+        controller.removeAI(player.id);
       });
+      // 头像仍弹详情
+      if (player.profileName && player.profile) {
+        const avatarEl = card.querySelector('.player-avatar');
+        avatarEl.style.cursor = 'pointer';
+        avatarEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showProfilePopup(player.profileName, player.profile);
+        });
+      }
     }
 
-    // AI 玩家踢出按钮
-    if (player.isAI && state.phase === 'waiting') {
-      const kickBtn = card.querySelector('[data-action="kick"]');
-      if (kickBtn) {
-        kickBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          controller.removeAI(Number(kickBtn.dataset.playerId));
-        });
-      }
-          }
-
-    // 绑定自己卡片上的操作按钮
+    // 自己的卡片：改名
     if (isSelf) {
-      card.addEventListener('click', (e) => {
-        const target = e.target;
-        const action = target.dataset?.action;
-        if (action === 'ready') {
-          controller.sendReady();
-        } else if (action === 'unready') {
-          controller.sendUnready();
-        } else if (action === 'spectate') {
-          controller.sendSpectate();
-        }
-      });
-
-      // Debug 选角
-      const debugRoleSelect = card.querySelector('[data-action="debug-role"]');
-      if (debugRoleSelect) {
-        debugRoleSelect.addEventListener('change', (e) => {
-          e.stopPropagation();
-          controller.sendChangeDebugRole(e.target.value || null);
-        });
-      }
-
       // 改名（contenteditable）
       const nameEl = card.querySelector('.waiting-card-name.editable');
       if (nameEl) {
@@ -1279,8 +1248,7 @@ function renderWaitingRoom(state) {
       emptyCard.innerHTML = `
         <img class="player-avatar" src="/assets/masks/aeon_aha.webp" alt="空位" style="opacity: 0.3;">
         <div class="waiting-card-info">
-          <div class="waiting-card-name">${position}号 空位</div>
-          <div class="waiting-card-status">点击添加AI</div>
+          <div class="waiting-card-name">添加AI</div>
         </div>
       `;
       emptyCard.addEventListener('click', () => controller.addAI());
@@ -1319,11 +1287,7 @@ function updateUI(state) {
     return;
   }
 
-  // 阶段切换时清空 DOM，让 updateMessages 从 messageHistory（= state.messages）重新渲染
-  if (lastPhase && lastPhase !== state.phase) {
-    elements.messages.innerHTML = '';
-    messagesInitialized = false;
-  }
+  const phaseChanged = lastPhase !== state.phase;
 
   // 从等待进入游戏：播放天黑请闭眼转场
   if (lastPhase === 'waiting' && state.phase !== 'waiting' && !nightTransitionShown) {
@@ -1340,12 +1304,20 @@ function updateUI(state) {
 
   window.frontendLogger.info(`[updateUI] presetLocked=${state.presetLocked}, presetId=${state.presetId}, phase=${state.phase}`);
 
+  // 状态更新时关闭标题栏板子下拉
+  if (headerPresetDropdownOpen) {
+    headerPresetDropdownOpen = false;
+    const dropdown = document.getElementById('header-preset-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+  }
+
   // Debug 模式：根据板子角色更新选项（debug组件显示已在loadPresets中处理）
   if (SERVER_DEBUG_MODE && state.boardRoles) {
     updateDebugRoleSelect(state.boardRoles);
   }
 
   updateHeader(state);
+
   updatePlayers(state);
   updateMessages();
 
@@ -1366,6 +1338,10 @@ function updateUI(state) {
 
 // 更新头部
 function updateHeader(state) {
+  const myPlayer = controller.getMyPlayer();
+  const headerKey = `${state.phase}:${state.dayCount}:${state.preset?.name || ''}:${state.presetLocked}:${state.currentSpeaker || ''}:${state.sheriff || ''}:${myPlayer?.role?.id || ''}:${state.self?.isCouple || ''}:${state.self?.couplePartner || ''}:${controller.isSpectator}:${controller.spectatorView}`;
+  if (headerKey === lastHeaderKey) return;
+  lastHeaderKey = headerKey;
   const phaseNames = {
     waiting: '等待玩家加入',
     cupid: '丘比特连接',
@@ -1387,7 +1363,10 @@ function updateHeader(state) {
 
   let phaseText = phaseNames[state.phase] || state.phase;
   if (state.phase === 'waiting') {
-    phaseText = '欢愉杀';
+    const currentPresetId = state.presetId || selectedPresetId;
+    const currentPreset = presets[currentPresetId];
+    const presetLabel = currentPreset ? `${currentPreset.name} ▾` : '▾';
+    elements.phaseInfo.innerHTML = `<span class="header-title">欢愉杀</span><span class="header-preset">${presetLabel}</span>`;
     if (state.presetLocked && state.presetId) {
       showPresetLocked(state.presetId);
     }
@@ -1402,8 +1381,8 @@ function updateHeader(state) {
       phaseText += ` | ${state.preset.name} ▾`;
     }
     elements.dayCount.textContent = '';
+    elements.phaseInfo.textContent = phaseText;
   }
-  elements.phaseInfo.textContent = phaseText;
 
   // 日夜切换 body class
   const nightPhases = ['cupid', 'guard', 'night_werewolf_discuss', 'night_werewolf_vote', 'witch', 'seer'];
@@ -1420,7 +1399,6 @@ function updateHeader(state) {
   }
 
   
-  const myPlayer = controller.getMyPlayer();
   if (myPlayer?.role) {
     const roleId = myPlayer.role.id || myPlayer.role;
     let roleHtml = `<span class="role-badge ${roleId}">${ROLE_NAMES[roleId] || roleId}</span>`;
@@ -1446,15 +1424,43 @@ function updateHeader(state) {
   }
 }
 
+function buildPlayersKey(state, myPlayer) {
+  const parts = [state.phase, state.currentSpeaker || '', state.sheriff || ''];
+  if (state.players) {
+    for (let i = 0; i < state.players.length; i++) {
+      const p = state.players[i];
+      parts.push(`${p.id}:${p.alive ? 1 : 0}:${p.isSheriff ? 1 : 0}:${p.isCouple ? 1 : 0}:${p.revealed ? 1 : 0}:${p.ready ? 1 : 0}:${p.role ? (p.role.id || '') : ''}:${p.profileName || ''}`);
+    }
+  }
+  if (myPlayer) {
+    parts.push(`me:${myPlayer.id}`);
+  }
+  if (controller.isSpectator) {
+    parts.push(`sv:${controller.spectatorView}`);
+  }
+  return parts.join('|');
+}
+
 // 更新玩家列表
 function updatePlayers(state) {
+  // 等待阶段不渲染侧栏玩家（使用等待房间卡片）
+  if (state.phase === 'waiting') {
+    if (elements.playersLeft.innerHTML !== '') {
+      elements.playersLeft.innerHTML = '';
+      elements.playersRight.innerHTML = '';
+    }
+    lastRenderedPlayersKey = null;
+    return;
+  }
+
+  const myPlayer = controller.getMyPlayer();
+  const playersKey = buildPlayersKey(state, myPlayer);
+  if (playersKey === lastRenderedPlayersKey) return;
+  lastRenderedPlayersKey = playersKey;
+
   elements.playersLeft.innerHTML = '';
   elements.playersRight.innerHTML = '';
 
-  // 等待阶段不渲染侧栏玩家（使用等待房间卡片）
-  if (state.phase === 'waiting') return;
-
-  const myPlayer = controller.getMyPlayer();
   const total = state.playerCount || state.preset?.playerCount || 9;
   const currentCount = state.players?.length || 0;
 
@@ -1512,9 +1518,8 @@ function updatePlayers(state) {
         <img class="player-avatar" src="${avatarSrc}" alt="${player.name}" onerror="this.src='/assets/masks/fools_mask.webp'">
         ${sheriffBadge}
       </div>
-      <div class="player-position">${position}号</div>
+      <div class="player-position">${position}号${roleText ? `<span class="player-role">${roleText}${isCouple ? ' 💕' : ''}</span>` : ''}</div>
       <div class="player-name">${player.name}</div>
-            ${roleText ? `<div class="player-role">${roleText}${isCouple ? ' 💕' : ''}</div>` : ''}
     `;
 
     // AI 玩家点击头像弹出详情
@@ -1563,9 +1568,11 @@ function updateMessages() {
   let addedGame = false;
   let addedChat = false;
 
-  messages.forEach(msg => {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     const msgId = msg.displayId || msg.id;
-    if (!document.querySelector(`[data-msg-id="${msgId}"]`)) {
+    if (!renderedMsgIds.has(msgId)) {
+      renderedMsgIds.add(msgId);
       if (msg.source === 'chat') {
         renderChatMessage(msg, state);
         addedChat = true;
@@ -1574,7 +1581,7 @@ function updateMessages() {
         addedGame = true;
       }
     }
-  });
+  }
 
   if (addedGame || addedChat) {
     const el = elements.messagesSection;
@@ -1688,7 +1695,7 @@ function displayMessage(msg, state) {
     addChatMessage(msg, state, typeClass);
 
     // 发言立绘：仅白天讨论阶段、AI 玩家
-    if (msg.type === 'speech' && state?.phase === 'day_discuss') {
+    if (msg.type === 'speech' && (state?.phase === 'day_discuss' || state?.phase === 'day_vote')) {
       const speaker = state.players?.find(p => p.id === msg.playerId);
       if (speaker && speaker.isAI && speaker.profileName) {
         showSpeakerArt(speaker.profileName, speaker.profile?.splashArt || 'splash_art.webp');
@@ -1762,10 +1769,6 @@ function displayMessage(msg, state) {
 
 // 添加消息
 function addMessage(content, className = '', id = null) {
-  // 如果有id，检查是否已存在（防止重复添加）
-  if (id && document.querySelector(`[data-msg-id="${id}"]`)) {
-    return;
-  }
   // 解析消息中的标签
   const parsedContent = window.MessageParser
     ? window.MessageParser.parseMessageContent(content)
@@ -1782,7 +1785,6 @@ function addMessage(content, className = '', id = null) {
 // 添加聊天气泡消息（微信风格）
 function addChatMessage(msg, state, typeClass = '') {
   const msgId = msg.displayId || msg.id;
-  if (msgId && document.querySelector(`[data-msg-id="${msgId}"]`)) return;
 
   const myPlayer = controller.getMyPlayer();
   const isSelf = myPlayer && msg.playerId === myPlayer.id;
@@ -1814,9 +1816,6 @@ function addChatMessage(msg, state, typeClass = '') {
 
 // 添加阶段分割线
 function addPhaseDivider(phaseText, msgId = null, msgPhase = null, msgRound = null) {
-  if (msgId && document.querySelector(`[data-msg-id="${msgId}"]`)) {
-    return;
-  }
   // 放逐后处理阶段不显示分割线
   if (msgPhase === 'post_vote') {
     return;
@@ -1890,6 +1889,14 @@ function _renderSpectatorBadge(spectators, spectatorCount) {
 }
 
 function updateDefaultAction(state) {
+  const readyCount = state.players?.filter(p => p.ready).length || 0;
+  const currentCount = state.players?.length || 0;
+  const total = state.playerCount || state.preset?.playerCount || 9;
+  const myPlayer = controller.getMyPlayer();
+  const actionKey = `${state.phase}:${currentCount}:${readyCount}:${total}:${myPlayer ? myPlayer.id : 'n'}:${myPlayer?.alive ? 1 : 0}:${myPlayer?.ready ? 1 : 0}:${controller.isSpectator ? 's' : 'p'}:${controller.spectatorView}:${state.winner || ''}:${state.spectators?.length || 0}`;
+  if (actionKey === lastActionKey) return;
+  lastActionKey = actionKey;
+
   elements.actionInput.classList.remove('active');
   elements.voteButtons.classList.remove('active');
   elements.skillButtons.classList.remove('active');
@@ -1901,8 +1908,10 @@ function updateDefaultAction(state) {
   document.getElementById('join-game-btn').classList.add('hidden');
   document.getElementById('start-game-btn').classList.add('hidden');
   document.getElementById('restart-btn').classList.add('hidden');
+  document.getElementById('ready-btn-action').classList.add('hidden');
+  document.getElementById('unready-btn-action').classList.add('hidden');
+  document.getElementById('spectate-btn-action').classList.add('hidden');
 
-  const myPlayer = controller.getMyPlayer();
   const spectators = state.spectators || [];
   const spectatorCount = spectators.length;
 
@@ -1940,13 +1949,20 @@ function updateDefaultAction(state) {
     elements.actionInput.classList.add('active');
     elements.speechInput.placeholder = '输入消息...';
     elements.speechInput.disabled = false;
-    elements.sendBtn.disabled = false;
 
     // 加入游戏按钮：仅观战者 + 有空位
     const joinBtn = document.getElementById('join-game-btn');
     if (joinBtn) {
       joinBtn.classList.toggle('hidden', !controller.isSpectator || current >= total);
     }
+
+    // 准备/取消准备/去观战按钮
+    const readyBtn = document.getElementById('ready-btn-action');
+    const unreadyBtn = document.getElementById('unready-btn-action');
+    const spectateBtn = document.getElementById('spectate-btn-action');
+    if (readyBtn) readyBtn.classList.toggle('hidden', !myPlayer || myPlayer.ready || controller.isSpectator);
+    if (unreadyBtn) unreadyBtn.classList.toggle('hidden', !myPlayer || !myPlayer.ready || controller.isSpectator);
+    if (spectateBtn) spectateBtn.classList.toggle('hidden', !myPlayer || myPlayer.ready || controller.isSpectator);
 
     // 开始游戏按钮：仅全 AI 就绪
     const startBtn = document.getElementById('start-game-btn');
@@ -1955,19 +1971,29 @@ function updateDefaultAction(state) {
       startBtn.classList.toggle('hidden', !shouldShow);
       if (shouldShow) {
         startBtn.disabled = false;
-        startBtn.textContent = '开始游戏';
+        startBtn.textContent = '开局';
       }
     }
 
     // 状态文字
+    const debugSelectHtml = (SERVER_DEBUG_MODE && myPlayer && !myPlayer.ready && !controller.isSpectator && state.preset?.roles)
+      ? `<span class="debug-prompt"><span class="debug-prompt-label">指定身份:</span><select id="debug-role-action" class="debug-role-action">${buildDebugRoleOptionValues(state.preset.roles, myPlayer.debugRole)}</select></span>`
+      : '';
     if (controller.isSpectator) {
       elements.actionPrompt.innerHTML = `<span style="font-size:13px;">👁 观战中 | ${current}/${total}</span>`;
     } else if (myPlayer && myPlayer.ready) {
       elements.actionPrompt.innerHTML = `<span style="font-size:13px;">已准备 (${readyCount}/${total})</span>`;
     } else if (myPlayer && !myPlayer.ready) {
-      elements.actionPrompt.innerHTML = `<span style="font-size:13px;">等待准备... (${readyCount}/${total})</span>`;
+      elements.actionPrompt.innerHTML = `${debugSelectHtml}<span style="font-size:13px;">等待准备... (${readyCount}/${total})</span>`;
     } else {
       elements.actionPrompt.innerHTML = `<span style="font-size:13px;">${current < total ? `等待玩家加入... (${current}/${total})` : '人已齐...'}</span>`;
+    }
+    // 绑定 debug 选角事件
+    const debugRoleAction = document.getElementById('debug-role-action');
+    if (debugRoleAction) {
+      debugRoleAction.addEventListener('change', (e) => {
+        controller.sendChangeDebugRole(e.target.value || null);
+      });
     }
 
     // 观战者计数徽章（绝对定位，不影响布局）
@@ -2037,7 +2063,6 @@ function updateDefaultAction(state) {
     elements.actionInput.classList.add('active');
     elements.speechInput.placeholder = '输入消息...';
     elements.speechInput.disabled = false;
-    elements.sendBtn.disabled = false;
 
     _renderSpectatorBadge(spectators, spectatorCount);
 
@@ -2070,7 +2095,6 @@ function updateDefaultAction(state) {
   // playing 阶段无行动时禁用输入框
   elements.speechInput.disabled = true;
   elements.speechInput.placeholder = '';
-  elements.sendBtn.disabled = true;
 }
 
 // 启动
