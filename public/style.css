@@ -592,11 +592,23 @@ body.phase-gameover #main-content {
   display: flex;
   align-items: flex-start;
   margin-bottom: 8px;
-  gap: 6px;
 }
 
 .chat-message.self {
   flex-direction: row-reverse;
+}
+
+.chat-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-bottom: 3px;
+  padding: 0 4px;
 }
 
 .chat-avatar {
@@ -607,16 +619,9 @@ body.phase-gameover #main-content {
   flex-shrink: 0;
 }
 
-.chat-body {
-  max-width: calc(100% - 34px);
-  min-width: 0;
-}
-
 .chat-name {
   font-size: 12px;
   color: #CCC;
-  margin-bottom: 3px;
-  padding: 0 4px;
 }
 
 .chat-sheriff-mark {
@@ -625,8 +630,8 @@ body.phase-gameover #main-content {
   margin-right: 2px;
 }
 
-.chat-message.self .chat-name {
-  text-align: right;
+.chat-message.self .chat-header {
+  flex-direction: row-reverse;
 }
 
 .chat-bubble {
@@ -1153,6 +1158,13 @@ body.phase-gameover #action-section {
   .chat-bubble { font-size: 18px; padding: 10px 14px; line-height: 1.7; }
   .chat-name { font-size: 14px; }
   .chat-sheriff-mark { font-size: 15px; }
+
+  .chat-header {
+    gap: 6px;
+  }
+  .chat-bubble {
+    width: 100%;
+  }
 
   #action-prompt { font-size: 18px; }
   #speech-input { font-size: 17px; padding: 12px 16px; }
