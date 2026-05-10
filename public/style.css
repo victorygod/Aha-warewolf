@@ -601,6 +601,16 @@ body.phase-gameover #main-content {
 .chat-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-message:not(.self) .chat-body {
+  align-items: flex-start;
+}
+
+.chat-message.self .chat-body {
+  align-items: flex-end;
 }
 
 .chat-header {
@@ -643,6 +653,8 @@ body.phase-gameover #main-content {
   line-height: 1.6;
   word-break: break-word;
   position: relative;
+  display: inline-block;
+  max-width: 100%;
 }
 
 .chat-message.self .chat-bubble {
