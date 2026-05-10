@@ -149,10 +149,7 @@ class RandomModel {
     const speeches = [
       '我是好人，请大家相信我。',
       '我怀疑有人是狼人。',
-      '我昨晚查验了某人。',
-      '请大家投我一票。',
       '我觉得某人很可疑。',
-      '我是神职，有信息。',
       '过。'
     ];
     return { content: speeches[Math.floor(Math.random() * speeches.length)] };
