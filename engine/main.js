@@ -793,6 +793,7 @@ class GameEngine extends EventEmitter {
       state.self = {
         id: player.id,
         name: player.name,
+        profileName: player.profileName,
         background: player.background,
         thinking: player.thinking,
         speaking: player.speaking,

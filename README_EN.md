@@ -61,6 +61,12 @@ One chat room spans the entire experience — before, during, and after the game
 
 Each AI character has an independent personality profile — including backstory, thinking patterns, and speaking style — so every decision they make carries a distinct character imprint.
 
+## AI Self-Evolution
+
+AI players aren't static. After each game, every AI reflects on their performance, distills lessons learned, and updates their personal strategy. These experiences accumulate independently per role and per board preset — the disguise techniques March 7th learns as a Werewolf won't interfere with her Seer strategies.
+
+Experiences are stored in each character's `experience.json`, structured as `{preset: {role: "experience content"}}`. In the next game, the AI reads its accumulated experience instead of generic strategy guides. The more they play, the stronger they get.
+
 ## How to Play
 
 ### Install

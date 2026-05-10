@@ -96,6 +96,9 @@ function buildToolResultMessage(toolName, action, context) {
     case ACTION.CHAT:
       return `你说：${action.content || ''}`;
 
+    case 'update_experience':
+      return `经验已更新（板子: ${action.presetId}, 角色: ${action.roleId}）`;
+
     default:
       return '操作成功';
   }

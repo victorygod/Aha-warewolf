@@ -1,4 +1,4 @@
-const { isSpeech } = require('./prompt');
+const { isSpeech, loadExperience } = require('./prompt');
 const { getToolsForAction, getTool } = require('./tools');
 const { buildToolResultMessage, formatMessageToText } = require('./formatter');
 const { LLMModel } = require('./models/llm_model');
@@ -143,9 +143,15 @@ class Agent {
               context: { ...context, action: ACTION.CHAT, extraData: { ...context.extraData, chatContext: { event: 'game_over' } } },
               callback: context.extraData?.callback
             },
-            // 3. 用 game 视角压缩游戏历史（此时 system 消息还是 game 模式）
+            // 3. 经验沉淀：反思本局并更新个人经验
+            {
+              type: 'decision',
+              context: { ...context, action: 'reflect', currentExperience: loadExperience(context.presetId, context.self?.role?.id || context.self?.role, context.self?.profileName) },
+              resolve: null
+            },
+            // 4. 用 game 视角压缩游戏历史（此时 system 消息还是 game 模式）
             { type: 'compact', mode: 'game_over' },
-            // 4. 切换到 chat 模式的 system 消息
+            // 5. 切换到 chat 模式的 system 消息
             { type: 'mode_change', mode: 'chat', context }
           ]
         };
@@ -322,7 +328,7 @@ class Agent {
   }
 
   async answer(context) {
-    const expectedAction = context.action === 'analyze' ? 'content' : (getTool(context.action) || 'content');
+    const expectedAction = (context.action === 'analyze' || context.action === 'reflect') ? 'content' : (getTool(context.action) || 'content');
     const isDecision = expectedAction !== 'content';
 
     // 一步完成：生成提示词 + 构建 LLMView + 持久化
@@ -332,7 +338,7 @@ class Agent {
       context.self
     );
 
-    const tools = isDecision ? getToolsForAction(context.action, context) : [];
+    const tools = (isDecision || context.action === 'reflect') ? getToolsForAction(context.action, context) : [];
 
     const playerName = context.self?.name || 'unknown';
     getLogger().debug(`[Agent] ${playerName} ${isDecision ? '决策' : '分析'} messages count: ${llmView.length}, action=${context.action}, expectedAction=${typeof expectedAction === 'string' ? expectedAction : expectedAction?.name}`);

@@ -45,7 +45,7 @@ class MessageManager {
     const task = getCurrentTask(action, context);
     const needThinking = action !== 'compact';
     const needSpeaking = isSpeech(action);
-    const ephemeralTask = action === 'analyze';
+    const ephemeralTask = action === 'analyze' || action === 'reflect';
 
     const thinking = (needThinking && self?.thinking)
       ? `【行为逻辑】\n${self.thinking}`

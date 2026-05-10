@@ -24,11 +24,14 @@ const ROLE_NAMES = {
   cupid: '丘比特'
 };
 
-function loadStrategyGuide(presetId, roleId) {
-  if (!presetId || !roleId) return '';
-  const strategyPath = path.join(__dirname, '..', 'strategy', presetId, `${roleId}.md`);
+function loadExperience(presetId, roleId, profileName) {
+  if (!presetId || !roleId || !profileName) return '';
+  const expPath = path.join(__dirname, '..', 'profiles', profileName, 'experience.json');
   try {
-    if (fs.existsSync(strategyPath)) return fs.readFileSync(strategyPath, 'utf-8');
+    if (fs.existsSync(expPath)) {
+      const data = JSON.parse(fs.readFileSync(expPath, 'utf-8'));
+      return data[presetId]?.[roleId] || '';
+    }
   } catch (err) { /* ignore */ }
   return '';
 }
@@ -54,7 +57,7 @@ function _buildGameContext(player, game) {
   const rulesText = ruleDescs.length > 0 ? '规则:' + ruleDescs.join('|') : '';
 
   const presetId = game.presetId || game.preset?.name?.replace('人', '-') || '';
-  const strategySection = loadStrategyGuide(presetId, roleId);
+  const experienceSection = loadExperience(presetId, roleId, player.profileName);
   // const strategySection = strategyGuide ? `\n\n【角色攻略】\n${strategyGuide}\n` : '';
 
   const playersList = (game.players || []).map((p, i) => {
@@ -62,7 +65,7 @@ function _buildGameContext(player, game) {
     return `${i + 1}号:${p.name}${suffix}`;
   }).join('，');
 
-  return { position, roleName, wolfTeammates, rulesText, strategySection, playersList };
+  return { position, roleName, wolfTeammates, rulesText, experienceSection, playersList };
 }
 
 function buildSystemPrompt(player, options = {}) {
@@ -79,8 +82,8 @@ function buildSystemPrompt(player, options = {}) {
 本局玩家：${ctx.playersList}
 【特殊规则】
 ${ctx.rulesText}
-【参考策略】
-${ctx.strategySection}
+【个人经验】
+${ctx.experienceSection}
 ${SYSTEM_MESSAGE_SUFFIX}`;
 }
 
@@ -174,6 +177,19 @@ const CURRENT_TASK = {
       return `【有人@你】${mentioner} 提到了你${chatSection}\n如果你想回应，请调用 action_chat 工具发言，不超过200字，支持 @名字。不想回应可以跳过。`;
     }
     return '【聊天室】你可以在聊天室自由发言，打招呼、讨论角色偏好、闲聊都行。请调用 action_chat 工具发言，不超过200字，支持 @名字(不要带位置号)。不想说话可以跳过。';
+  },
+  reflect: (_aliveList, context) => {
+    const roleId = context.self?.role?.id || context.self?.role;
+    const roleName = ROLE_NAMES[roleId] || roleId;
+    const presetId = context.presetId || '';
+    const currentExperience = context.currentExperience || '';
+    const winner = context.winner || '';
+    const camp = context.self?.role?.camp;
+    const result = (camp && winner) ? (camp === winner ? '你所在的阵营获胜了' : '你所在的阵营失败了') : '';
+    const experienceSection = currentExperience
+      ? `你本局使用的个人经验如下：\n${currentExperience}`
+      : '你目前没有该角色的个人经验。';
+    return `【经验沉淀】游戏结束。你本局角色是${roleName}（${roleId}），板子为${presetId}，${result}。\n${experienceSection}\n\n请回顾本局表现，总结得失。如果需要更新经验，调用 update_experience 工具全量替换（roleId 为角色ID，content 为新经验内容）；你可以多次调用完善。如果当前经验无需修改，直接说明即可，不必调用工具。`;
   }
 };
 
@@ -291,5 +307,6 @@ module.exports = {
   ROLE_NAMES,
   DEFAULT_THINKING,
   CREATIVE_NAMES,
-  COMPACT_TEMPLATES
+  COMPACT_TEMPLATES,
+  loadExperience
 };

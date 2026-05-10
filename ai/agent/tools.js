@@ -6,6 +6,9 @@
  */
 
 const { ACTION } = require('../../engine/constants');
+const { ROLE_NAMES } = require('./prompt');
+const fs = require('fs');
+const path = require('path');
 
 // ========== 工具注册表 ==========
 const TOOL_REGISTRY = {};
@@ -19,7 +22,8 @@ function getTool(actionType) {
 }
 
 function getToolsForAction(requiredAction, context) {
-  const tool = getTool(requiredAction);
+  const toolName = requiredAction === 'reflect' ? 'update_experience' : requiredAction;
+  const tool = getTool(toolName);
   if (!tool) return [];
   const schema = tool.buildSchema(context);
   return schema ? [{ type: 'function', function: schema }] : [];
@@ -593,6 +597,62 @@ registerTool({
     }
 
     return { success: true, action: { target: parseInt(target) } };
+  }
+});
+
+registerTool({
+  name: 'update_experience',
+  description: '全量替换指定角色在当前板子下的个人经验内容',
+
+  buildSchema(context) {
+    const roleId = context.self?.role?.id || context.self?.role;
+    const roleName = ROLE_NAMES[roleId] || roleId;
+    return {
+      name: 'update_experience',
+      description: `全量替换你在当前板子下作为某角色的经验内容。你本局角色是${roleName}。调用后旧经验将被完全替换。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          roleId: { type: 'string', description: '角色ID，如 werewolf, seer, witch, guard, hunter, villager, idiot, cupid', enum: ['werewolf', 'seer', 'witch', 'guard', 'hunter', 'villager', 'idiot', 'cupid'] },
+          content: { type: 'string', description: '新的经验内容，将全量替换旧内容' }
+        },
+        required: ['roleId', 'content']
+      }
+    };
+  },
+
+  execute(input, context) {
+    if (!input || typeof input !== 'object') {
+      return { success: false, error: '参数格式错误' };
+    }
+    const { roleId, content } = input;
+    if (!roleId || !content || typeof content !== 'string' || content.trim().length === 0) {
+      return { success: false, error: '缺少必填参数: roleId 和 content（content 不能为空）' };
+    }
+
+    const profileName = context.self?.profileName;
+    const presetId = context.presetId;
+    if (!profileName || !presetId) {
+      return { success: false, error: '缺少上下文信息，无法更新经验' };
+    }
+
+    const expPath = path.join(__dirname, '..', 'profiles', profileName, 'experience.json');
+    let data = {};
+    try {
+      if (fs.existsSync(expPath)) {
+        data = JSON.parse(fs.readFileSync(expPath, 'utf-8'));
+      }
+    } catch (err) { /* start with empty */ }
+
+    if (!data[presetId]) data[presetId] = {};
+    data[presetId][roleId] = content.trim();
+
+    try {
+      fs.writeFileSync(expPath, JSON.stringify(data, null, 2), 'utf-8');
+      return { success: true, action: { roleId, presetId } };
+    } catch (err) {
+      return { success: false, error: `写入经验文件失败: ${err.message}` };
+    }
   }
 });
 
